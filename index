@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Split — shared expenses</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<style>
+  :root{
+    --ink:#181B23; --ink-soft:#3A3F4B; --muted:#717784; --faint:#9AA0AC;
+    --canvas:#EEF1F4; --card:#FFFFFF; --line:#E4E7EC; --line-soft:#EEF0F3;
+    --brand:#0E7C66; --brand-ink:#0A5C4C;
+    --pos:#1DAA6B; --pos-soft:#E6F6EF;
+    --neg:#E5564B; --neg-soft:#FCEBE9;
+    --shadow:0 1px 2px rgba(16,24,40,.04), 0 8px 24px rgba(16,24,40,.06);
+    --shadow-lg:0 12px 40px rgba(16,24,40,.16);
+    --r:16px; --r-sm:11px; --r-lg:22px;
+    --display:'Space Grotesk',system-ui,sans-serif;
+    --body:'Inter',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:var(--body); color:var(--ink); background:var(--canvas);
+    -webkit-font-smoothing:antialiased; line-height:1.45;
+    overflow-x:hidden;
+  }
+  .num{font-family:var(--display); font-feature-settings:"tnum" 1; letter-spacing:-.01em}
+  button{font-family:inherit; cursor:pointer; border:none; background:none; color:inherit}
+  input,textarea,select{font-family:inherit; font-size:16px; color:var(--ink)}
+  :focus-visible{outline:2px solid var(--brand); outline-offset:2px; border-radius:6px}
+  ::selection{background:#0E7C6633}
+
+  /* ---------- App frame ---------- */
+  #app{max-width:560px; margin:0 auto; min-height:100dvh; display:flex; flex-direction:column}
+
+  .topbar{
+    position:sticky; top:0; z-index:30; background:rgba(238,241,244,.85);
+    backdrop-filter:saturate(1.4) blur(12px); -webkit-backdrop-filter:saturate(1.4) blur(12px);
+    padding:14px 18px 12px; display:flex; align-items:center; gap:12px;
+    border-bottom:1px solid var(--line);
+  }
+  .wordmark{font-family:var(--display); font-weight:700; font-size:21px; letter-spacing:-.03em; display:flex; align-items:center; gap:8px}
+  .wordmark .dot{width:10px; height:10px; border-radius:50%; background:var(--brand); box-shadow:0 0 0 4px #0E7C6622}
+  .topbar .spacer{flex:1}
+  .me-chip{display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line);
+    padding:5px 11px 5px 5px; border-radius:999px; font-weight:600; font-size:13px; box-shadow:var(--shadow)}
+  .me-chip:active{transform:scale(.97)}
+
+  main{flex:1; padding:18px 18px 110px}
+
+  /* ---------- Connection banner ---------- */
+  .conn{background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:14px 16px; margin-bottom:16px; box-shadow:var(--shadow)}
+  .conn.ok{border-color:#1DAA6B55; background:var(--pos-soft)}
+  .conn-head{display:flex; align-items:center; gap:10px; cursor:pointer}
+  .conn-head h3{font-size:14px; font-weight:600}
+  .conn-head .status{margin-left:auto; font-size:12px; font-weight:600; color:var(--muted); display:flex; align-items:center; gap:6px}
+  .conn-head .status .led{width:8px; height:8px; border-radius:50%; background:var(--neg)}
+  .conn.ok .status .led{background:var(--pos)}
+  .conn-body{margin-top:12px}
+  .conn p{font-size:13px; color:var(--muted); margin-bottom:10px; line-height:1.5}
+  .conn .row{display:flex; gap:8px}
+  .conn input{flex:1; padding:11px 13px; border:1px solid var(--line); border-radius:var(--r-sm); background:#fff}
+
+  /* ---------- Avatars ---------- */
+  .av{display:inline-flex; align-items:center; justify-content:center; border-radius:50%; color:#fff;
+    font-weight:600; font-family:var(--body); flex:none; line-height:1}
+  .av.sm{width:30px; height:30px; font-size:12px}
+  .av.md{width:40px; height:40px; font-size:15px}
+  .av.lg{width:58px; height:58px; font-size:21px}
+
+  /* ---------- Buttons ---------- */
+  .btn{display:inline-flex; align-items:center; justify-content:center; gap:8px; font-weight:600; font-size:15px;
+    padding:13px 18px; border-radius:var(--r-sm); transition:transform .08s ease, background .15s ease, box-shadow .15s}
+  .btn:active{transform:scale(.98)}
+  .btn-primary{background:var(--brand); color:#fff; box-shadow:0 1px 2px rgba(14,124,102,.4), 0 6px 16px rgba(14,124,102,.22)}
+  .btn-primary:hover{background:var(--brand-ink)}
+  .btn-primary:disabled{background:#C7CDD4; box-shadow:none; cursor:not-allowed; color:#fff}
+  .btn-ghost{background:var(--card); border:1px solid var(--line); color:var(--ink); box-shadow:var(--shadow)}
+  .btn-ghost:hover{border-color:#cfd4db}
+  .btn-block{width:100%}
+  .btn-sm{padding:9px 13px; font-size:13px; border-radius:9px}
+
+  /* ---------- Cards / sections ---------- */
+  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--r); box-shadow:var(--shadow)}
+  .section-eyebrow{font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); margin:2px 0 12px}
+  .page-title{font-family:var(--display); font-weight:700; font-size:26px; letter-spacing:-.025em; margin-bottom:2px}
+  .page-sub{font-size:14px; color:var(--muted); margin-bottom:20px}
+
+  /* ---------- Forms ---------- */
+  .field{margin-bottom:16px}
+  .field label{display:block; font-size:13px; font-weight:600; color:var(--ink-soft); margin-bottom:7px}
+  .field .hint{font-weight:400; color:var(--faint)}
+  .input, textarea.input, select.input{width:100%; padding:13px 14px; border:1px solid var(--line); border-radius:var(--r-sm);
+    background:#fff; transition:border .15s, box-shadow .15s}
+  .input:focus, textarea.input:focus, select.input:focus{outline:none; border-color:var(--brand); box-shadow:0 0 0 3px #0E7C661f}
+  textarea.input{resize:vertical; min-height:70px; line-height:1.5}
+  .money-input{position:relative}
+  .money-input .sym{position:absolute; left:14px; top:50%; transform:translateY(-50%); color:var(--muted); font-weight:600; font-family:var(--display)}
+  .money-input input{padding-left:30px; font-family:var(--display); font-size:18px; font-weight:600}
+
+  /* segmented control */
+  .seg{display:flex; background:var(--canvas); border:1px solid var(--line); border-radius:var(--r-sm); padding:4px; gap:4px}
+  .seg button{flex:1; padding:9px; border-radius:8px; font-size:13.5px; font-weight:600; color:var(--muted); transition:.15s}
+  .seg button.active{background:#fff; color:var(--ink); box-shadow:var(--shadow)}
+
+  /* person picker chips */
+  .people-grid{display:flex; flex-wrap:wrap; gap:8px}
+  .pchip{display:inline-flex; align-items:center; gap:8px; padding:6px 13px 6px 6px; border-radius:999px;
+    border:1.5px solid var(--line); background:#fff; font-size:14px; font-weight:600; color:var(--ink-soft); transition:.12s}
+  .pchip:active{transform:scale(.96)}
+  .pchip.on{border-color:var(--brand); background:#0E7C660d; color:var(--ink)}
+  .pchip .tick{margin-left:2px; color:var(--brand); opacity:0; transition:.12s; font-size:13px}
+  .pchip.on .tick{opacity:1}
+
+  .split-row{display:flex; align-items:center; gap:11px; padding:10px 0; border-bottom:1px solid var(--line-soft)}
+  .split-row:last-child{border-bottom:none}
+  .split-row .name{flex:1; font-weight:500; font-size:14.5px}
+  .split-row .amt{width:104px}
+  .split-summary{display:flex; justify-content:space-between; align-items:baseline; padding:12px 14px; border-radius:var(--r-sm);
+    background:var(--canvas); font-size:13.5px; margin-top:8px}
+  .split-summary.bad{background:var(--neg-soft); color:#A8392F}
+  .split-summary.good{background:var(--pos-soft); color:#0F7A4E}
+  .split-summary .v{font-family:var(--display); font-weight:700; font-size:16px}
+
+  .upload{display:flex; align-items:center; gap:12px; padding:14px; border:1.5px dashed var(--line); border-radius:var(--r-sm);
+    background:#fafbfc; cursor:pointer; transition:.15s}
+  .upload:hover{border-color:var(--brand); background:#0E7C6608}
+  .upload .ic{width:38px; height:38px; border-radius:10px; background:var(--canvas); display:grid; place-items:center; flex:none}
+  .upload .t{font-size:13.5px; font-weight:600}
+  .upload .s{font-size:12px; color:var(--faint)}
+  .receipt-prev{display:flex; align-items:center; gap:10px; margin-top:10px; font-size:13px; background:var(--canvas); padding:8px 10px; border-radius:10px}
+  .receipt-prev img{width:44px; height:44px; object-fit:cover; border-radius:8px}
+
+  /* ---------- Balances ---------- */
+  .overall{padding:22px 20px; border-radius:var(--r-lg); color:#fff; margin-bottom:18px; position:relative; overflow:hidden}
+  .overall.pos{background:linear-gradient(135deg,#15A06A,#0E7C66)}
+  .overall.neg{background:linear-gradient(135deg,#E5564B,#C53A30)}
+  .overall.zero{background:linear-gradient(135deg,#3A4250,#272D38)}
+  .overall .lbl{font-size:13px; opacity:.85; font-weight:500}
+  .overall .big{font-family:var(--display); font-weight:700; font-size:42px; letter-spacing:-.03em; line-height:1.1; margin-top:4px}
+  .overall .sub{font-size:13px; opacity:.85; margin-top:6px}
+  .overall::after{content:""; position:absolute; right:-40px; top:-40px; width:160px; height:160px; border-radius:50%; background:rgba(255,255,255,.08)}
+
+  .bal-row{display:flex; align-items:center; gap:13px; padding:15px 16px; border-bottom:1px solid var(--line-soft)}
+  .bal-row:last-child{border-bottom:none}
+  .bal-info{flex:1; min-width:0}
+  .bal-info .nm{font-weight:600; font-size:15px}
+  .bal-info .meta{font-size:12.5px; color:var(--faint)}
+  .flow{height:6px; background:var(--canvas); border-radius:99px; margin-top:8px; position:relative; overflow:hidden}
+  .flow .fill{position:absolute; top:0; bottom:0; border-radius:99px}
+  .bal-amt{text-align:right; flex:none}
+  .bal-amt .v{font-family:var(--display); font-weight:700; font-size:17px}
+  .bal-amt .d{font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em}
+  .pos-c{color:var(--pos)} .neg-c{color:var(--neg)} .zero-c{color:var(--faint)}
+
+  /* ---------- Quick ---------- */
+  .quick-grid{display:grid; grid-template-columns:1fr 1fr; gap:11px}
+  .quick-btn{background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:16px; text-align:left;
+    box-shadow:var(--shadow); transition:transform .08s, box-shadow .15s; position:relative}
+  .quick-btn:active{transform:scale(.97)}
+  .quick-btn:hover{box-shadow:var(--shadow-lg)}
+  .quick-btn .emo{font-size:26px; display:block; margin-bottom:8px}
+  .quick-btn .ql{font-weight:600; font-size:14.5px}
+  .quick-btn .qa{font-family:var(--display); font-weight:700; font-size:18px; margin-top:3px}
+  .quick-btn .qs{font-size:11.5px; color:var(--faint); margin-top:2px}
+  .quick-btn .del{position:absolute; top:8px; right:8px; width:24px; height:24px; border-radius:50%; background:var(--canvas);
+    display:grid; place-items:center; color:var(--muted); font-size:13px; opacity:0; transition:.15s}
+  .quick-btn:hover .del{opacity:1}
+  .quick-add{border:1.5px dashed var(--line); background:transparent; box-shadow:none; display:grid; place-items:center; color:var(--muted); min-height:118px; font-weight:600; font-size:14px}
+  .quick-add:hover{border-color:var(--brand); color:var(--brand)}
+
+  /* ---------- Trip ---------- */
+  .trip-route{display:flex; gap:12px; align-items:stretch}
+  .trip-route .pins{display:flex; flex-direction:column; align-items:center; padding-top:14px}
+  .trip-route .pin{width:11px; height:11px; border-radius:50%; border:2.5px solid var(--brand)}
+  .trip-route .pin.end{border-color:var(--neg); border-radius:50% 50% 50% 0; transform:rotate(45deg)}
+  .trip-route .line{flex:1; width:2px; background:repeating-linear-gradient(var(--line) 0 4px, transparent 4px 8px); margin:4px 0}
+  .trip-route .inputs{flex:1}
+  #map{height:200px; border-radius:var(--r); margin-top:14px; border:1px solid var(--line); background:var(--canvas); z-index:0}
+  .trip-result{display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line); border-radius:var(--r); overflow:hidden; margin-top:14px}
+  .trip-result .cell{background:#fff; padding:14px 12px; text-align:center}
+  .trip-result .cv{font-family:var(--display); font-weight:700; font-size:21px}
+  .trip-result .cl{font-size:11px; color:var(--faint); margin-top:2px; text-transform:uppercase; letter-spacing:.05em}
+  .trip-result .cell.cost .cv{color:var(--brand)}
+
+  .veh-row{display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--line-soft)}
+  .veh-row:last-child{border-bottom:none}
+  .veh-row .vn{font-weight:600; font-size:14.5px}
+  .veh-row .vm{font-size:12.5px; color:var(--faint)}
+
+  /* ---------- Activity ---------- */
+  .act-row{display:flex; align-items:center; gap:13px; padding:14px 16px; border-bottom:1px solid var(--line-soft)}
+  .act-row:last-child{border-bottom:none}
+  .act-ic{width:42px; height:42px; border-radius:12px; background:var(--canvas); display:grid; place-items:center; font-size:19px; flex:none}
+  .act-main{flex:1; min-width:0}
+  .act-main .at{font-weight:600; font-size:14.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .act-main .am{font-size:12.5px; color:var(--faint)}
+  .act-right{text-align:right; flex:none}
+  .act-right .tot{font-family:var(--display); font-weight:700; font-size:15px}
+  .act-right .yr{font-size:11.5px; color:var(--muted)}
+
+  /* ---------- Tab bar ---------- */
+  .tabbar{position:fixed; bottom:0; left:0; right:0; z-index:40; display:flex; justify-content:center; pointer-events:none}
+  .tabbar .inner{pointer-events:auto; display:flex; gap:2px; background:rgba(24,27,35,.92); backdrop-filter:blur(12px);
+    margin-bottom:max(14px,env(safe-area-inset-bottom)); padding:6px; border-radius:999px; box-shadow:var(--shadow-lg)}
+  .tab{display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 14px; border-radius:999px; color:#9AA0AC; transition:.15s; min-width:58px}
+  .tab svg{width:21px; height:21px}
+  .tab span{font-size:10px; font-weight:600}
+  .tab.active{background:#fff; color:var(--ink)}
+
+  /* ---------- Login ---------- */
+  .login{min-height:100dvh; display:flex; flex-direction:column; justify-content:center; padding:32px 24px; max-width:480px; margin:0 auto}
+  .login .hero{text-align:center; margin-bottom:36px}
+  .login .hero .mk{font-family:var(--display); font-weight:700; font-size:40px; letter-spacing:-.04em; display:inline-flex; align-items:center; gap:11px}
+  .login .hero .mk .dot{width:14px;height:14px;border-radius:50%;background:var(--brand);box-shadow:0 0 0 6px #0E7C661f}
+  .login .hero p{color:var(--muted); margin-top:10px; font-size:15px}
+  .login .who{font-size:12px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); text-align:center; margin-bottom:18px}
+  .who-grid{display:grid; grid-template-columns:1fr 1fr; gap:11px}
+  .who-card{background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:18px 16px; display:flex; align-items:center; gap:13px;
+    box-shadow:var(--shadow); transition:transform .08s, box-shadow .15s; text-align:left}
+  .who-card:hover{box-shadow:var(--shadow-lg)}
+  .who-card:active{transform:scale(.97)}
+  .who-card .nm{font-weight:600; font-size:16px}
+  .who-add{grid-column:1/-1; border:1.5px dashed var(--line); background:transparent; box-shadow:none; justify-content:center; color:var(--muted); font-weight:600; padding:15px}
+  .who-add:hover{border-color:var(--brand); color:var(--brand)}
+
+  /* ---------- Modal / sheet ---------- */
+  .overlay{position:fixed; inset:0; background:rgba(17,20,28,.5); z-index:50; display:flex; align-items:flex-end; justify-content:center;
+    opacity:0; pointer-events:none; transition:opacity .2s}
+  .overlay.show{opacity:1; pointer-events:auto}
+  .sheet{background:var(--card); width:100%; max-width:560px; border-radius:var(--r-lg) var(--r-lg) 0 0; padding:8px 20px 24px;
+    max-height:90dvh; overflow-y:auto; transform:translateY(100%); transition:transform .26s cubic-bezier(.32,.72,0,1)}
+  .overlay.show .sheet{transform:translateY(0)}
+  .sheet .grip{width:38px; height:4px; background:var(--line); border-radius:99px; margin:8px auto 14px}
+  .sheet h2{font-family:var(--display); font-weight:700; font-size:21px; letter-spacing:-.02em; margin-bottom:4px}
+  .sheet .desc{font-size:13.5px; color:var(--muted); margin-bottom:18px}
+
+  /* ---------- Toast ---------- */
+  #toasts{position:fixed; top:14px; left:0; right:0; z-index:60; display:flex; flex-direction:column; align-items:center; gap:8px; pointer-events:none}
+  .toast{background:var(--ink); color:#fff; padding:11px 18px; border-radius:999px; font-size:13.5px; font-weight:500;
+    box-shadow:var(--shadow-lg); display:flex; align-items:center; gap:9px; transform:translateY(-16px); opacity:0; transition:.25s}
+  .toast.show{transform:translateY(0); opacity:1}
+  .toast.err{background:var(--neg)}
+  .toast.ok .ic{color:#5BE3A5}
+
+  .empty{text-align:center; padding:48px 20px; color:var(--faint)}
+  .empty .e-ic{font-size:34px; margin-bottom:10px}
+  .empty .e-t{font-weight:600; color:var(--muted); font-size:15px}
+  .empty .e-s{font-size:13.5px; margin-top:4px}
+
+  .spin{width:18px; height:18px; border:2.5px solid #ffffff55; border-top-color:#fff; border-radius:50%; animation:sp .7s linear infinite; display:inline-block}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .skeleton{background:linear-gradient(90deg,#e9ecf0 25%,#f2f4f7 50%,#e9ecf0 75%); background-size:200% 100%; animation:sk 1.3s infinite; border-radius:8px}
+  @keyframes sk{to{background-position:-200% 0}}
+
+  @media (max-width:380px){ .quick-grid,.who-grid{grid-template-columns:1fr} }
+  @media (prefers-reduced-motion:reduce){ *{animation-duration:.001ms!important; transition-duration:.001ms!important} }
+</style>
+</head>
+<body>
+
+<div id="login" class="login"></div>
+
+<div id="app" style="display:none">
+  <div class="topbar">
+    <div class="wordmark"><span class="dot"></span>Split</div>
+    <div class="spacer"></div>
+    <button class="me-chip" id="meChip"></button>
+  </div>
+  <main id="view"></main>
+  <nav class="tabbar"><div class="inner" id="tabbar"></div></nav>
+</div>
+
+<div class="overlay" id="overlay"><div class="sheet" id="sheet"></div></div>
+<div id="toasts"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+/* ============================================================== *
+ *  PASTE YOUR WEB APP URL HERE (ends in /exec) — or use the
+ *  connection box at the top of the app. Leaving it blank just
+ *  means the app runs in preview mode until you connect.
+ * ============================================================== */
+let SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyiDoq6R8czEa6iymh_t0zrupUwvQGrLaX5IS2ScTFhAuaUQdl5yCTjgFOUq4QgiSMH/exec";
+
+// Must match SHARED_SECRET in Code.gs exactly.
+const SHARED_SECRET = "split-7f3a9c2e8b1d4056";
+
+/* ---------------- State ---------------- */
+const PALETTE = ['#E5564B','#1DAA6B','#3B82F6','#F59E0B','#8B5CF6','#EC4899','#0EA5E9','#14B8A6','#F97316','#6366F1'];
+const SEED_PEOPLE = ['Owen','Alex','Conor','Ben','Alice','Lucy'];
+const state = {
+  people: SEED_PEOPLE.map((n,i)=>({name:n,color:PALETTE[i%PALETTE.length]})),
+  vehicles: [], quick: [], expenses: [],
+  me: null, tab: 'balances', connected: false, loading: false
+};
+
+/* ---------------- Helpers ---------------- */
+const $ = s => document.querySelector(s);
+const el = (tag, cls, html) => { const e=document.createElement(tag); if(cls) e.className=cls; if(html!=null) e.innerHTML=html; return e; };
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => '£'+(Math.round(Number(n)*100)/100).toFixed(2);
+const initials = n => n.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
+const personColor = n => (state.people.find(p=>p.name===n)||{}).color || '#717784';
+const avatar = (name, size='sm') => `<span class="av ${size}" style="background:${personColor(name)}">${esc(initials(name))}</span>`;
+
+/* ---------------- Backend ---------------- */
+async function api(action, payload){
+  if(!SCRIPT_URL) throw new Error('Not connected. Add your Web app URL up top.');
+  const res = await fetch(SCRIPT_URL, {
+    method:'POST', redirect:'follow',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({action, payload: payload||{}, secret: SHARED_SECRET})
+  });
+  const out = await res.json();
+  if(!out.ok) throw new Error(out.error||'Something went wrong');
+  return out.data;
+}
+function applyData(d){
+  if(!d) return;
+  state.people = d.people && d.people.length ? d.people : state.people;
+  state.vehicles = d.vehicles || [];
+  state.quick = d.quick || [];
+  state.expenses = (d.expenses||[]).sort((a,b)=>b.ts-a.ts);
+  if(state.me && !state.people.some(p=>p.name===state.me)) state.me = null;
+}
+async function refresh(){
+  if(!SCRIPT_URL) return;
+  try{ state.loading=true; const d = await api('getData'); state.connected=true; applyData(d); }
+  catch(e){ state.connected=false; toast(e.message,'err'); }
+  finally{ state.loading=false; renderAll(); }
+}
+
+/* ---------------- Toast ---------------- */
+function toast(msg, kind='ok'){
+  const t = el('div','toast '+kind);
+  const ic = kind==='err' ? '✕' : '✓';
+  t.innerHTML = `<span class="ic">${ic}</span>${esc(msg)}`;
+  $('#toasts').appendChild(t);
+  requestAnimationFrame(()=>t.classList.add('show'));
+  setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(),300); }, 2800);
+}
+
+/* ---------------- Sheet / modal ---------------- */
+function openSheet(builder){
+  const sheet = $('#sheet'); sheet.innerHTML='<div class="grip"></div>';
+  builder(sheet);
+  $('#overlay').classList.add('show');
+}
+function closeSheet(){ $('#overlay').classList.remove('show'); }
+$('#overlay').addEventListener('click', e=>{ if(e.target.id==='overlay') closeSheet(); });
+
+/* ---------------- Balance maths ---------------- */
+function computeBalances(){
+  // debt[a][b] = how much a owes b
+  const debt = {};
+  state.people.forEach(p=>{ debt[p.name]={}; });
+  state.expenses.forEach(x=>{
+    const payer = x.paidBy;
+    Object.keys(x.split||{}).forEach(person=>{
+      if(person===payer) return;
+      if(!debt[person]) debt[person]={};
+      debt[person][payer] = (debt[person][payer]||0) + (Number(x.split[person])||0);
+    });
+  });
+  // net for me vs each other person
+  const me = state.me;
+  const rows = [];
+  state.people.filter(p=>p.name!==me).forEach(p=>{
+    const o = p.name;
+    const theyOweMe = (debt[o] && debt[o][me]) || 0;
+    const iOweThem  = (debt[me] && debt[me][o]) || 0;
+    const net = theyOweMe - iOweThem; // >0 they owe me
+    rows.push({name:o, net});
+  });
+  const overall = rows.reduce((s,r)=>s+r.net,0);
+  return {rows, overall};
+}
+
+/* ============================================================== *
+ *  LOGIN
+ * ============================================================== */
+function renderLogin(){
+  const wrap = $('#login'); wrap.innerHTML='';
+  const hero = el('div','hero');
+  hero.innerHTML = `<div class="mk"><span class="dot"></span>Split</div><p>Shared expenses, settled fairly. Pick your name to start.</p>`;
+  wrap.appendChild(hero);
+  wrap.appendChild(el('div','who','Who are you?'));
+
+  const grid = el('div','who-grid');
+  state.people.forEach(p=>{
+    const c = el('button','who-card');
+    c.innerHTML = `${avatar(p.name,'md')}<span class="nm">${esc(p.name)}</span>`;
+    c.onclick = ()=>{ state.me = p.name; showApp(); };
+    grid.appendChild(c);
+  });
+  const add = el('button','who-card who-add','+ Add someone');
+  add.onclick = addPersonSheet;
+  grid.appendChild(add);
+  wrap.appendChild(grid);
+
+  if(!SCRIPT_URL){
+    const note = el('p',null,'Running in preview mode — add your Web app URL after signing in to sync with your sheet.');
+    note.style.cssText='text-align:center;color:var(--faint);font-size:12.5px;margin-top:24px;line-height:1.5';
+    wrap.appendChild(note);
+  }
+}
+
+function addPersonSheet(){
+  openSheet(s=>{
+    s.appendChild(el('h2',null,'Add a person'));
+    s.appendChild(el('p','desc','They’ll be able to log in and be included in splits.'));
+    const f = el('div','field');
+    f.innerHTML = `<label>Name</label><input class="input" id="newPersonName" placeholder="e.g. Sam" autocomplete="off">`;
+    s.appendChild(f);
+    const btn = el('button','btn btn-primary btn-block','Add person');
+    btn.onclick = async ()=>{
+      const name = $('#newPersonName').value.trim();
+      if(!name) return toast('Enter a name','err');
+      if(SCRIPT_URL){
+        try{ btn.innerHTML='<span class="spin"></span>'; applyData(await api('addPerson',{name})); toast(name+' added'); }
+        catch(e){ return toast(e.message,'err'); } finally{ btn.innerHTML='Add person'; }
+      } else {
+        if(state.people.some(p=>p.name.toLowerCase()===name.toLowerCase())) return toast('Already added','err');
+        state.people.push({name,color:PALETTE[state.people.length%PALETTE.length]});
+      }
+      closeSheet(); renderAll();
+    };
+    s.appendChild(btn);
+    setTimeout(()=>$('#newPersonName').focus(),100);
+  });
+}
+
+/* ============================================================== *
+ *  APP SHELL
+ * ============================================================== */
+function showApp(){
+  $('#login').style.display='none';
+  $('#app').style.display='flex';
+  renderAll();
+  refresh();
+}
+const TABS = [
+  {id:'balances', label:'Balances', icon:'M3 13h4l2 5 4-12 2 7h6'},
+  {id:'add', label:'Add', icon:'M12 5v14M5 12h14'},
+  {id:'quick', label:'Quick', icon:'M13 2L4.5 12.5h6L9 22l9-12h-6z'},
+  {id:'trip', label:'Trip', icon:'M5 17h2l1-3h8l1 3h2M6 14l1.5-5h9L18 14M7.5 17.5h.01M16.5 17.5h.01'},
+  {id:'activity', label:'Activity', icon:'M12 8v4l3 2M12 21a9 9 0 100-18 9 9 0 000 18z'},
+];
+function renderTabs(){
+  const bar = $('#tabbar'); bar.innerHTML='';
+  TABS.forEach(t=>{
+    const b = el('button','tab'+(state.tab===t.id?' active':''));
+    b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${t.icon}"/></svg><span>${t.label}</span>`;
+    b.onclick = ()=>{ state.tab=t.id; renderAll(); };
+    bar.appendChild(b);
+  });
+}
+function renderMeChip(){
+  $('#meChip').innerHTML = `${avatar(state.me,'sm')}<span>${esc(state.me)}</span>`;
+  $('#meChip').onclick = switchUserSheet;
+}
+function switchUserSheet(){
+  openSheet(s=>{
+    s.appendChild(el('h2',null,'Switch user'));
+    s.appendChild(el('p','desc','Who’s using the app right now?'));
+    const grid = el('div','who-grid');
+    state.people.forEach(p=>{
+      const c = el('button','who-card');
+      c.innerHTML = `${avatar(p.name,'md')}<span class="nm">${esc(p.name)}</span>`;
+      c.onclick = ()=>{ state.me=p.name; closeSheet(); renderAll(); };
+      grid.appendChild(c);
+    });
+    const add = el('button','who-card who-add','+ Add someone');
+    add.onclick = addPersonSheet;
+    grid.appendChild(add);
+    s.appendChild(grid);
+  });
+}
+
+function renderAll(){
+  if(!state.me){ $('#app').style.display='none'; $('#login').style.display='flex'; renderLogin(); return; }
+  renderMeChip(); renderTabs();
+  const v = $('#view'); v.innerHTML='';
+  v.appendChild(connBanner());
+  if(state.tab==='balances') v.appendChild(viewBalances());
+  if(state.tab==='add') v.appendChild(viewAdd());
+  if(state.tab==='quick') v.appendChild(viewQuick());
+  if(state.tab==='trip') v.appendChild(viewTrip());
+  if(state.tab==='activity') v.appendChild(viewActivity());
+}
+
+/* ---------------- Connection banner ---------------- */
+function connBanner(){
+  const c = el('div','conn'+(state.connected?' ok':''));
+  const collapsed = state.connected;
+  c.innerHTML = `
+    <div class="conn-head">
+      <h3>${state.connected?'Synced with your sheet':'Connect your Google Sheet'}</h3>
+      <div class="status"><span class="led"></span>${state.connected?'Connected':'Not connected'}</div>
+    </div>`;
+  const body = el('div','conn-body');
+  body.style.display = collapsed ? 'none' : 'block';
+  body.innerHTML = `
+    <p>Paste the Web app URL from your Apps Script deployment (it ends in <b>/exec</b>). See the setup notes in Code.gs.</p>
+    <div class="row">
+      <input class="input" id="urlInput" placeholder="https://script.google.com/macros/s/.../exec" value="${esc(SCRIPT_URL)}">
+      <button class="btn btn-primary btn-sm" id="urlSave">Connect</button>
+    </div>`;
+  c.appendChild(body);
+  c.querySelector('.conn-head').onclick = ()=>{ body.style.display = body.style.display==='none'?'block':'none'; };
+  body.querySelector('#urlSave').onclick = async (e)=>{
+    e.stopPropagation();
+    SCRIPT_URL = $('#urlInput').value.trim();
+    if(!SCRIPT_URL) return toast('Paste a URL first','err');
+    const btn = $('#urlSave'); btn.innerHTML='<span class="spin"></span>';
+    await refresh();
+    if(state.connected) toast('Connected to your sheet');
+  };
+  return c;
+}
+
+/* ============================================================== *
+ *  BALANCES
+ * ============================================================== */
+function viewBalances(){
+  const wrap = el('div');
+  const {rows, overall} = computeBalances();
+
+  const kind = Math.abs(overall)<0.01 ? 'zero' : (overall>0?'pos':'neg');
+  const card = el('div','overall '+kind);
+  let lbl, big, sub;
+  if(kind==='zero'){ lbl='All square'; big=money(0); sub='Nobody owes anybody anything right now.'; }
+  else if(kind==='pos'){ lbl='You are owed, overall'; big=money(overall); sub='Across everyone in the group.'; }
+  else { lbl='You owe, overall'; big=money(Math.abs(overall)); sub='Across everyone in the group.'; }
+  card.innerHTML = `<div class="lbl">${lbl}</div><div class="big num">${big}</div><div class="sub">${sub}</div>`;
+  wrap.appendChild(card);
+
+  wrap.appendChild(el('div','section-eyebrow','Person by person'));
+  const list = el('div','card');
+  const sorted = rows.slice().sort((a,b)=>Math.abs(b.net)-Math.abs(a.net));
+  if(!sorted.length){
+    list.appendChild(emptyState('🫶','Just you so far','Add more people to start splitting.'));
+  } else {
+    const max = Math.max(1, ...sorted.map(r=>Math.abs(r.net)));
+    sorted.forEach(r=>{
+      const row = el('div','bal-row');
+      const settled = Math.abs(r.net)<0.01;
+      const dir = settled?'zero':(r.net>0?'pos':'neg');
+      const pct = Math.min(100, (Math.abs(r.net)/max)*100);
+      const fill = dir==='zero' ? '' :
+        (dir==='pos'
+          ? `<div class="fill" style="left:50%;width:${pct/2}%;background:var(--pos)"></div>`
+          : `<div class="fill" style="right:50%;width:${pct/2}%;background:var(--neg)"></div>`);
+      row.innerHTML = `
+        ${avatar(r.name,'md')}
+        <div class="bal-info">
+          <div class="nm">${esc(r.name)}</div>
+          <div class="meta">${settled?'Settled up':(r.net>0?'owes you':'you owe')}</div>
+          <div class="flow"><div class="fill" style="left:50%;width:1px;background:var(--line)"></div>${fill}</div>
+        </div>
+        <div class="bal-amt">
+          <div class="v ${dir==='pos'?'pos-c':dir==='neg'?'neg-c':'zero-c'} num">${settled?'—':money(Math.abs(r.net))}</div>
+          <div class="d ${dir==='pos'?'pos-c':dir==='neg'?'neg-c':'zero-c'}">${settled?'':(r.net>0?'owed':'you owe')}</div>
+        </div>`;
+      row.onclick = ()=>personDetailSheet(r.name);
+      list.appendChild(row);
+    });
+  }
+  wrap.appendChild(list);
+  return wrap;
+}
+
+function personDetailSheet(other){
+  const shared = state.expenses.filter(x=> x.split && (x.split[other]!=null || x.split[state.me]!=null) && (x.paidBy===other||x.paidBy===state.me) && (x.split[other]!=null && x.paidBy===state.me || x.split[state.me]!=null && x.paidBy===other));
+  openSheet(s=>{
+    s.appendChild(el('h2',null,`You & ${esc(other)}`));
+    s.appendChild(el('p','desc','Expenses between the two of you.'));
+    if(!shared.length){ s.appendChild(emptyState('🧾','Nothing shared yet','No expenses link you two so far.')); return; }
+    const list = el('div','card'); list.style.marginBottom='8px';
+    shared.forEach(x=>{
+      const youPaid = x.paidBy===state.me;
+      const amt = youPaid ? (x.split[other]||0) : (x.split[state.me]||0);
+      const row = el('div','act-row');
+      row.innerHTML = `<div class="act-ic">${typeIcon(x)}</div>
+        <div class="act-main"><div class="at">${esc(x.name)}</div>
+        <div class="am">${youPaid?'You paid · they owe':'They paid · you owe'}</div></div>
+        <div class="act-right"><div class="tot num ${youPaid?'pos-c':'neg-c'}">${money(amt)}</div></div>`;
+      list.appendChild(row);
+    });
+    s.appendChild(list);
+  });
+}
+
+/* ============================================================== *
+ *  ADD EXPENSE
+ * ============================================================== */
+const draft = { receipt:null };
+function viewAdd(prefill){
+  draft.receipt = null;
+  const wrap = el('div');
+  wrap.appendChild(el('div','page-title','Add an expense'));
+  wrap.appendChild(el('div','page-sub','Log what was spent and split it however you like.'));
+
+  const form = el('div');
+  form.innerHTML = `
+    <div class="field"><label>Name</label>
+      <input class="input" id="exName" placeholder="e.g. Tesco shop" autocomplete="off" value="${esc(prefill&&prefill.name||'')}"></div>
+    <div class="field"><label>Amount</label>
+      <div class="money-input"><span class="sym">£</span>
+      <input class="input" id="exTotal" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${prefill&&prefill.total||''}"></div></div>
+    <div class="field"><label>Description <span class="hint">optional</span></label>
+      <textarea class="input" id="exDesc" placeholder="Anything worth noting">${esc(prefill&&prefill.description||'')}</textarea></div>
+    <div class="field"><label>Paid by</label>
+      <div class="people-grid" id="paidByGrid"></div></div>
+    <div class="field"><label>Split between</label>
+      <div class="people-grid" id="splitGrid"></div></div>
+    <div class="field"><label>How to split</label>
+      <div class="seg" id="splitMode">
+        <button data-m="equal" class="active">Split equally</button>
+        <button data-m="exact">Exact amounts</button>
+      </div>
+      <div id="splitDetail" style="margin-top:12px"></div></div>
+    <div class="field"><label>Receipt <span class="hint">optional</span></label>
+      <label class="upload" for="exFile">
+        <div class="ic">📎</div>
+        <div><div class="t">Attach a receipt</div><div class="s">Photo or PDF — images are compressed automatically</div></div>
+      </label>
+      <input type="file" id="exFile" accept="image/*,application/pdf" style="display:none">
+      <div id="receiptPrev"></div></div>
+    <button class="btn btn-primary btn-block" id="saveExpense">Save expense</button>
+  `;
+  wrap.appendChild(form);
+
+  // local form state
+  const fs = {
+    paidBy: prefill&&prefill.paidBy || state.me,
+    selected: new Set(prefill&&prefill.split ? Object.keys(prefill.split) : state.people.map(p=>p.name)),
+    mode:'equal',
+    exact:{}
+  };
+
+  function drawPaidBy(){
+    const g = form.querySelector('#paidByGrid'); g.innerHTML='';
+    state.people.forEach(p=>{
+      const b = el('button','pchip'+(fs.paidBy===p.name?' on':''));
+      b.innerHTML = `${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+      b.onclick = ()=>{ fs.paidBy=p.name; drawPaidBy(); drawDetail(); };
+      g.appendChild(b);
+    });
+  }
+  function drawSplit(){
+    const g = form.querySelector('#splitGrid'); g.innerHTML='';
+    const all = el('button','pchip'+(fs.selected.size===state.people.length?' on':''));
+    all.innerHTML = `Everyone<span class="tick">✓</span>`;
+    all.onclick = ()=>{
+      if(fs.selected.size===state.people.length) fs.selected.clear();
+      else state.people.forEach(p=>fs.selected.add(p.name));
+      drawSplit(); drawDetail();
+    };
+    g.appendChild(all);
+    state.people.forEach(p=>{
+      const b = el('button','pchip'+(fs.selected.has(p.name)?' on':''));
+      b.innerHTML = `${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+      b.onclick = ()=>{ fs.selected.has(p.name)?fs.selected.delete(p.name):fs.selected.add(p.name); drawSplit(); drawDetail(); };
+      g.appendChild(b);
+    });
+  }
+  function currentSplit(){
+    const names = [...fs.selected];
+    const total = Number(form.querySelector('#exTotal').value)||0;
+    if(fs.mode==='equal'){
+      const cents = Math.round(total*100), n=names.length||1;
+      const base = Math.floor(cents/n); let rem = cents-base*n;
+      const out={}; names.forEach((nm,i)=>{ out[nm]=(base+(i<rem?1:0))/100; });
+      return {split:out, total, sum:total, ok:names.length>0&&total>0};
+    } else {
+      const out={}; let sum=0;
+      names.forEach(nm=>{ const v=Number(fs.exact[nm])||0; out[nm]=v; sum+=v; });
+      return {split:out, total, sum, ok:names.length>0&&total>0&&Math.abs(sum-total)<0.011};
+    }
+  }
+  function drawDetail(){
+    const d = form.querySelector('#splitDetail'); d.innerHTML='';
+    const names = [...fs.selected];
+    if(!names.length){ d.innerHTML='<div class="split-summary bad">Pick at least one person to split between.</div>'; updateSave(); return; }
+    const {split,total,sum} = currentSplit();
+    if(fs.mode==='equal'){
+      const box = el('div','card'); box.style.padding='4px 14px';
+      names.forEach(nm=>{
+        const r = el('div','split-row');
+        r.innerHTML = `${avatar(nm,'sm')}<span class="name">${esc(nm)}</span><span class="num" style="font-weight:600">${money(split[nm])}</span>`;
+        box.appendChild(r);
+      });
+      d.appendChild(box);
+      const s = el('div','split-summary good');
+      s.innerHTML = `<span>${names.length} ${names.length===1?'person':'people'} · equal shares</span><span class="v num">${money(total)}</span>`;
+      d.appendChild(s);
+    } else {
+      const box = el('div','card'); box.style.padding='4px 14px';
+      names.forEach(nm=>{
+        const r = el('div','split-row');
+        r.innerHTML = `${avatar(nm,'sm')}<span class="name">${esc(nm)}</span>
+          <div class="money-input amt"><span class="sym" style="font-size:13px">£</span>
+          <input class="input" data-nm="${esc(nm)}" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${fs.exact[nm]!=null?fs.exact[nm]:''}" style="padding-left:24px;font-size:15px"></div>`;
+        box.appendChild(r);
+      });
+      d.appendChild(box);
+      box.querySelectorAll('input[data-nm]').forEach(inp=>{
+        inp.oninput = ()=>{ fs.exact[inp.dataset.nm]=inp.value; const {sum,total}=currentSplit(); updateSummary(sum,total); updateSave(); };
+      });
+      const diff = total-sum;
+      const s = el('div','split-summary '+(Math.abs(diff)<0.011?'good':'bad'));
+      s.id='exactSummary';
+      s.innerHTML = summaryHTML(sum,total);
+      d.appendChild(s);
+    }
+    updateSave();
+  }
+  function summaryHTML(sum,total){
+    const diff = Math.round((total-sum)*100)/100;
+    if(Math.abs(diff)<0.011) return `<span>Adds up perfectly</span><span class="v num">${money(total)}</span>`;
+    if(diff>0) return `<span>${money(diff)} left to assign</span><span class="v num">${money(sum)} / ${money(total)}</span>`;
+    return `<span>${money(-diff)} over the total</span><span class="v num">${money(sum)} / ${money(total)}</span>`;
+  }
+  function updateSummary(sum,total){
+    const s = form.querySelector('#exactSummary'); if(!s) return;
+    const ok = Math.abs(total-sum)<0.011;
+    s.className = 'split-summary '+(ok?'good':'bad');
+    s.innerHTML = summaryHTML(sum,total);
+  }
+  function updateSave(){
+    const {ok} = currentSplit();
+    form.querySelector('#saveExpense').disabled = !ok || !form.querySelector('#exName').value.trim();
+  }
+
+  form.querySelector('#splitMode').addEventListener('click', e=>{
+    const btn = e.target.closest('button'); if(!btn) return;
+    fs.mode = btn.dataset.m;
+    [...form.querySelectorAll('#splitMode button')].forEach(b=>b.classList.toggle('active', b===btn));
+    drawDetail();
+  });
+  form.querySelector('#exTotal').addEventListener('input', ()=>{ drawDetail(); });
+  form.querySelector('#exName').addEventListener('input', updateSave);
+
+  // receipt
+  form.querySelector('#exFile').addEventListener('change', async (e)=>{
+    const file = e.target.files[0]; if(!file) return;
+    const prev = form.querySelector('#receiptPrev'); prev.innerHTML='<div class="receipt-prev">Processing…</div>';
+    try{
+      const r = await processFile(file);
+      draft.receipt = r;
+      prev.innerHTML = `<div class="receipt-prev">
+        ${r.preview?`<img src="${r.preview}">`:'<div class="act-ic">📄</div>'}
+        <div style="flex:1"><div style="font-weight:600">${esc(r.name)}</div><div style="color:var(--faint);font-size:12px">${(r.size/1024).toFixed(0)} KB</div></div>
+        <button class="btn btn-ghost btn-sm" id="rmReceipt">Remove</button></div>`;
+      prev.querySelector('#rmReceipt').onclick = ()=>{ draft.receipt=null; prev.innerHTML=''; form.querySelector('#exFile').value=''; };
+    }catch(err){ prev.innerHTML=''; toast('Could not read that file','err'); }
+  });
+
+  form.querySelector('#saveExpense').onclick = async ()=>{
+    const name = form.querySelector('#exName').value.trim();
+    const total = Number(form.querySelector('#exTotal').value)||0;
+    const desc = form.querySelector('#exDesc').value.trim();
+    const {split, ok} = currentSplit();
+    if(!ok || !name) return;
+    const payload = { name, total, description:desc, paidBy:fs.paidBy, split, type:(prefill&&prefill.type)||'expense' };
+    if(draft.receipt) payload.receipt = { data:draft.receipt.data, name:draft.receipt.name, mimeType:draft.receipt.mimeType };
+    const btn = form.querySelector('#saveExpense'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+    try{
+      if(SCRIPT_URL){ applyData(await api('addExpense', payload)); }
+      else { state.expenses.unshift({id:'local_'+Date.now(),ts:Date.now(),receiptUrl:'',...payload}); }
+      toast('Expense saved'); state.tab='balances'; renderAll();
+    }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save expense'; }
+  };
+
+  setTimeout(()=>{ drawPaidBy(); drawSplit(); drawDetail(); },0);
+  return wrap;
+}
+
+/* ============================================================== *
+ *  QUICK EXPENSES
+ * ============================================================== */
+function viewQuick(){
+  const wrap = el('div');
+  wrap.appendChild(el('div','page-title','Quick expenses'));
+  wrap.appendChild(el('div','page-sub','One tap to log the things that happen again and again.'));
+  const grid = el('div','quick-grid');
+  state.quick.forEach(q=>{
+    const b = el('button','quick-btn');
+    const splitTxt = q.split==='all'||!Array.isArray(q.split) ? 'Split with everyone' : `Split with ${q.split.length}`;
+    b.innerHTML = `<button class="del" title="Delete">✕</button>
+      <span class="emo">${esc(q.emoji||'⚡')}</span>
+      <div class="ql">${esc(q.label)}</div>
+      <div class="qa num">${money(q.amount)}</div>
+      <div class="qs">${splitTxt}</div>`;
+    b.onclick = ()=>logQuick(q);
+    b.querySelector('.del').onclick = (e)=>{ e.stopPropagation(); deleteQuick(q); };
+    grid.appendChild(b);
+  });
+  const add = el('button','quick-btn quick-add','+ New quick expense');
+  add.onclick = ()=>quickEditorSheet();
+  grid.appendChild(add);
+  wrap.appendChild(grid);
+  return wrap;
+}
+function logQuick(q){
+  openSheet(s=>{
+    s.appendChild(el('h2',null,`${q.emoji||'⚡'} ${esc(q.label)}`));
+    s.appendChild(el('p','desc','Log this now? You can change who paid first.'));
+    const names = (q.split==='all'||!Array.isArray(q.split)) ? state.people.map(p=>p.name) : q.split.filter(n=>state.people.some(p=>p.name===n));
+    const fs = { paidBy: state.me };
+    const f = el('div','field'); f.innerHTML='<label>Paid by</label><div class="people-grid" id="qPaid"></div>';
+    s.appendChild(f);
+    const draw = ()=>{ const g=f.querySelector('#qPaid'); g.innerHTML='';
+      state.people.forEach(p=>{ const b=el('button','pchip'+(fs.paidBy===p.name?' on':''));
+        b.innerHTML=`${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+        b.onclick=()=>{fs.paidBy=p.name; draw();}; g.appendChild(b); }); };
+    draw();
+    const info = el('div','split-summary good');
+    info.innerHTML = `<span>Split equally · ${names.length} people</span><span class="v num">${money(q.amount)}</span>`;
+    s.appendChild(info);
+    const btn = el('button','btn btn-primary btn-block','Log '+money(q.amount)); btn.style.marginTop='14px';
+    btn.onclick = async ()=>{
+      const cents=Math.round(q.amount*100), n=names.length||1, base=Math.floor(cents/n); let rem=cents-base*n;
+      const split={}; names.forEach((nm,i)=>split[nm]=(base+(i<rem?1:0))/100);
+      const payload={ name:q.label, total:q.amount, description:q.description||'', paidBy:fs.paidBy, split, type:'quick' };
+      btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+      try{
+        if(SCRIPT_URL){ applyData(await api('addExpense',payload)); }
+        else { state.expenses.unshift({id:'local_'+Date.now(),ts:Date.now(),receiptUrl:'',...payload}); }
+        closeSheet(); toast(q.label+' logged'); state.tab='balances'; renderAll();
+      }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Log '+money(q.amount); }
+    };
+    s.appendChild(btn);
+  });
+}
+async function deleteQuick(q){
+  if(SCRIPT_URL){ try{ applyData(await api('deleteQuickExpense',{label:q.label})); toast('Removed'); }catch(e){ toast(e.message,'err'); } }
+  else { state.quick = state.quick.filter(x=>x!==q); }
+  renderAll();
+}
+function quickEditorSheet(){
+  openSheet(s=>{
+    s.appendChild(el('h2',null,'New quick expense'));
+    s.appendChild(el('p','desc','A reusable button — like a coffee round or a weekly subscription.'));
+    s.innerHTML += `
+      <div class="field"><label>Emoji</label><input class="input" id="qEmoji" maxlength="2" placeholder="☕" style="width:80px;text-align:center;font-size:22px"></div>
+      <div class="field"><label>Label</label><input class="input" id="qLabel" placeholder="e.g. Coffee round"></div>
+      <div class="field"><label>Amount</label><div class="money-input"><span class="sym">£</span>
+        <input class="input" id="qAmount" type="number" step="0.01" inputmode="decimal" placeholder="0.00"></div></div>
+      <div class="field"><label>Description <span class="hint">optional</span></label><input class="input" id="qDescQ" placeholder="Optional note"></div>
+      <div class="field"><label>Split between</label><div class="people-grid" id="qSplit"></div></div>`;
+    const sel = new Set(state.people.map(p=>p.name));
+    const drawS = ()=>{ const g=s.querySelector('#qSplit'); g.innerHTML='';
+      const all=el('button','pchip'+(sel.size===state.people.length?' on':'')); all.innerHTML='Everyone<span class="tick">✓</span>';
+      all.onclick=()=>{ if(sel.size===state.people.length)sel.clear(); else state.people.forEach(p=>sel.add(p.name)); drawS(); };
+      g.appendChild(all);
+      state.people.forEach(p=>{ const b=el('button','pchip'+(sel.has(p.name)?' on':''));
+        b.innerHTML=`${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+        b.onclick=()=>{ sel.has(p.name)?sel.delete(p.name):sel.add(p.name); drawS(); }; g.appendChild(b); }); };
+    drawS();
+    const btn = el('button','btn btn-primary btn-block','Create button');
+    btn.onclick = async ()=>{
+      const label = s.querySelector('#qLabel').value.trim();
+      const amount = Number(s.querySelector('#qAmount').value)||0;
+      if(!label) return toast('Give it a label','err');
+      if(!(amount>0)) return toast('Enter an amount','err');
+      const split = sel.size===state.people.length ? 'all' : [...sel];
+      const q = { label, emoji:s.querySelector('#qEmoji').value.trim()||'⚡', amount, description:s.querySelector('#qDescQ').value.trim(), split };
+      btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+      try{
+        if(SCRIPT_URL){ applyData(await api('addQuickExpense',q)); }
+        else { state.quick.push(q); }
+        closeSheet(); toast('Quick expense created'); renderAll();
+      }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Create button'; }
+    };
+    s.appendChild(btn);
+  });
+}
+
+/* ============================================================== *
+ *  TRIP / FUEL
+ * ============================================================== */
+let _map, _layer;
+const trip = { origin:'', destination:'', vehicle:null, mpg:'', pence:'145', roundTrip:false, result:null };
+function viewTrip(){
+  const wrap = el('div');
+  wrap.appendChild(el('div','page-title','Trip cost'));
+  wrap.appendChild(el('div','page-sub','Work out the fuel for a journey, then split it like any expense.'));
+
+  const form = el('div','card'); form.style.padding='16px';
+  form.innerHTML = `
+    <div class="trip-route">
+      <div class="pins"><span class="pin"></span><span class="line"></span><span class="pin end"></span></div>
+      <div class="inputs">
+        <div class="field" style="margin-bottom:10px"><input class="input" id="tFrom" placeholder="Start — e.g. Tyldesley" value="${esc(trip.origin)}"></div>
+        <div class="field" style="margin-bottom:0"><input class="input" id="tTo" placeholder="Destination — e.g. Manchester" value="${esc(trip.destination)}"></div>
+      </div>
+    </div>
+    <div class="field" style="margin-top:16px"><label>Vehicle</label>
+      <select class="input" id="tVehicle"></select></div>
+    <div style="display:flex;gap:12px">
+      <div class="field" style="flex:1"><label>MPG</label><input class="input" id="tMpg" type="number" inputmode="decimal" placeholder="e.g. 45" value="${esc(trip.mpg)}"></div>
+      <div class="field" style="flex:1"><label>Fuel <span class="hint">p/litre</span></label><input class="input" id="tPence" type="number" inputmode="decimal" placeholder="145" value="${esc(trip.pence)}"></div>
+    </div>
+    <div class="field"><label style="display:flex;align-items:center;gap:9px;cursor:pointer">
+      <input type="checkbox" id="tRound" ${trip.roundTrip?'checked':''} style="width:18px;height:18px;accent-color:var(--brand)"> Return journey (there and back)
+    </label></div>
+    <button class="btn btn-primary btn-block" id="tCalc">Calculate fuel cost</button>
+    <div id="tOut"></div>
+  `;
+  wrap.appendChild(form);
+
+  // vehicle select
+  const sel = form.querySelector('#tVehicle');
+  sel.innerHTML = `<option value="">— Manual entry —</option>` + state.vehicles.map(v=>`<option value="${esc(v.name)}">${esc(v.name)} · ${v.mpg} mpg</option>`).join('') + `<option value="__add">+ Save a vehicle…</option>`;
+  sel.onchange = ()=>{
+    if(sel.value==='__add'){ sel.value=trip.vehicle||''; vehicleEditorSheet(); return; }
+    trip.vehicle = sel.value;
+    const v = state.vehicles.find(x=>x.name===sel.value);
+    if(v){ form.querySelector('#tMpg').value=v.mpg||''; if(v.pence) form.querySelector('#tPence').value=v.pence; }
+  };
+  if(trip.vehicle) sel.value=trip.vehicle;
+
+  form.querySelector('#tCalc').onclick = async ()=>{
+    trip.origin = form.querySelector('#tFrom').value.trim();
+    trip.destination = form.querySelector('#tTo').value.trim();
+    trip.mpg = form.querySelector('#tMpg').value;
+    trip.pence = form.querySelector('#tPence').value;
+    trip.roundTrip = form.querySelector('#tRound').checked;
+    if(!trip.origin||!trip.destination) return toast('Enter both places','err');
+    if(!(Number(trip.mpg)>0)) return toast('Enter the MPG','err');
+    if(!SCRIPT_URL) return toast('Connect your sheet to use the map — it does the distance maths.','err');
+    const btn = form.querySelector('#tCalc'); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Mapping route…';
+    try{
+      const r = await api('calcTrip',{origin:trip.origin, destination:trip.destination, mpg:Number(trip.mpg), pence:Number(trip.pence), roundTrip:trip.roundTrip});
+      trip.result = r; renderTripOut(form.querySelector('#tOut'));
+    }catch(e){ toast(e.message,'err'); }
+    finally{ btn.disabled=false; btn.innerHTML='Calculate fuel cost'; }
+  };
+
+  // manage vehicles list
+  if(state.vehicles.length){
+    wrap.appendChild(el('div','section-eyebrow','Saved vehicles'));
+    const vc = el('div','card'); vc.style.padding='4px 16px';
+    state.vehicles.forEach(v=>{
+      const r = el('div','veh-row');
+      r.innerHTML = `<div class="act-ic">🚗</div><div style="flex:1"><div class="vn">${esc(v.name)}</div>
+        <div class="vm">${v.mpg} mpg${v.pence?` · ${v.pence}p/litre`:''}</div></div>
+        <button class="btn btn-ghost btn-sm vdel">Remove</button>`;
+      r.querySelector('.vdel').onclick = async ()=>{
+        if(SCRIPT_URL){ try{ applyData(await api('deleteVehicle',{name:v.name})); toast('Removed'); }catch(e){ toast(e.message,'err'); } }
+        else { state.vehicles=state.vehicles.filter(x=>x!==v); }
+        renderAll();
+      };
+      vc.appendChild(r);
+    });
+    wrap.appendChild(vc);
+  }
+
+  if(trip.result) setTimeout(()=>renderTripOut(form.querySelector('#tOut')),0);
+  return wrap;
+}
+function renderTripOut(box){
+  const r = trip.result; if(!r) return;
+  box.innerHTML = `
+    <div class="trip-result">
+      <div class="cell"><div class="cv num">${r.miles}</div><div class="cl">miles${r.roundTrip?' (return)':''}</div></div>
+      <div class="cell"><div class="cv num">${r.litres}</div><div class="cl">litres</div></div>
+      <div class="cell cost"><div class="cv num">${money(r.cost)}</div><div class="cl">fuel cost</div></div>
+    </div>
+    <div id="map"></div>
+    <button class="btn btn-primary btn-block" id="tripToExpense" style="margin-top:14px">Add as expense · ${money(r.cost)}</button>`;
+  box.querySelector('#tripToExpense').onclick = ()=>{
+    state.tab='add';
+    const prefill = { name:`Trip: ${r.origin} → ${r.destination}`, total:r.cost, type:'trip',
+      description:`${r.miles} miles${r.roundTrip?' return':''} · ${r.litres} L · ${trip.mpg} mpg @ ${trip.pence}p/L` };
+    const v=$('#view'); v.innerHTML=''; v.appendChild(connBanner()); v.appendChild(viewAdd(prefill)); renderTabs();
+  };
+  setTimeout(()=>drawMap(r),50);
+}
+function drawMap(r){
+  const node = document.getElementById('map'); if(!node||typeof L==='undefined') return;
+  if(_map){ _map.remove(); _map=null; }
+  _map = L.map(node,{zoomControl:false, attributionControl:false});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(_map);
+  const a=[r.start.lat,r.start.lng], b=[r.end.lat,r.end.lng];
+  const pts = r.polyline ? decodePolyline(r.polyline) : [a,b];
+  const line = L.polyline(pts,{color:'#0E7C66',weight:4,opacity:.9}).addTo(_map);
+  L.circleMarker(a,{radius:7,color:'#0E7C66',fillColor:'#0E7C66',fillOpacity:1}).addTo(_map);
+  L.circleMarker(b,{radius:7,color:'#E5564B',fillColor:'#E5564B',fillOpacity:1}).addTo(_map);
+  _map.fitBounds(line.getBounds().pad(0.15));
+  setTimeout(()=>_map.invalidateSize(),100);
+}
+function decodePolyline(str){
+  let index=0,lat=0,lng=0,coords=[];
+  while(index<str.length){
+    let b,shift=0,result=0;
+    do{ b=str.charCodeAt(index++)-63; result|=(b&0x1f)<<shift; shift+=5; }while(b>=0x20);
+    lat += (result&1)?~(result>>1):(result>>1); shift=0; result=0;
+    do{ b=str.charCodeAt(index++)-63; result|=(b&0x1f)<<shift; shift+=5; }while(b>=0x20);
+    lng += (result&1)?~(result>>1):(result>>1);
+    coords.push([lat/1e5,lng/1e5]);
+  }
+  return coords;
+}
+function vehicleEditorSheet(){
+  openSheet(s=>{
+    s.appendChild(el('h2',null,'Save a vehicle'));
+    s.appendChild(el('p','desc','Stored so you don’t re-enter the MPG every trip.'));
+    s.innerHTML += `
+      <div class="field"><label>Name</label><input class="input" id="vName" placeholder="e.g. Owen’s Golf"></div>
+      <div style="display:flex;gap:12px">
+        <div class="field" style="flex:1"><label>MPG</label><input class="input" id="vMpg" type="number" inputmode="decimal" placeholder="45"></div>
+        <div class="field" style="flex:1"><label>Fuel p/litre</label><input class="input" id="vPence" type="number" inputmode="decimal" placeholder="145"></div>
+      </div>`;
+    const btn = el('button','btn btn-primary btn-block','Save vehicle');
+    btn.onclick = async ()=>{
+      const name=s.querySelector('#vName').value.trim();
+      const mpg=Number(s.querySelector('#vMpg').value)||0;
+      const pence=Number(s.querySelector('#vPence').value)||0;
+      if(!name) return toast('Give it a name','err');
+      if(!(mpg>0)) return toast('Enter the MPG','err');
+      btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+      try{
+        if(SCRIPT_URL){ applyData(await api('addVehicle',{name,mpg,pence})); }
+        else { state.vehicles.push({name,mpg,pence,notes:''}); }
+        trip.vehicle=name; closeSheet(); toast('Vehicle saved'); renderAll();
+      }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save vehicle'; }
+    };
+    s.appendChild(btn);
+  });
+}
+
+/* ============================================================== *
+ *  ACTIVITY
+ * ============================================================== */
+function typeIcon(x){ return x.type==='trip'?'🚗':x.type==='quick'?'⚡':'🧾'; }
+function viewActivity(){
+  const wrap = el('div');
+  wrap.appendChild(el('div','page-title','Activity'));
+  wrap.appendChild(el('div','page-sub','Every expense, newest first.'));
+  const list = el('div','card');
+  if(!state.expenses.length){
+    list.appendChild(emptyState('🧾','No expenses yet','Add your first one from the Add tab.'));
+  } else {
+    state.expenses.forEach(x=>{
+      const yourShare = (x.split&&x.split[state.me])||0;
+      const youPaid = x.paidBy===state.me;
+      const row = el('div','act-row');
+      const date = new Date(x.ts);
+      const ds = date.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+      row.innerHTML = `<div class="act-ic">${typeIcon(x)}</div>
+        <div class="act-main"><div class="at">${esc(x.name)}</div>
+          <div class="am">${youPaid?'You':esc(x.paidBy)} paid · ${ds}${x.receiptUrl?' · 📎':''}</div></div>
+        <div class="act-right"><div class="tot num">${money(x.total)}</div>
+          <div class="yr">${yourShare?('your share '+money(yourShare)):'not in split'}</div></div>`;
+      row.onclick = ()=>expenseDetailSheet(x);
+      list.appendChild(row);
+    });
+  }
+  wrap.appendChild(list);
+  return wrap;
+}
+function expenseDetailSheet(x){
+  openSheet(s=>{
+    s.appendChild(el('h2',null,esc(x.name)));
+    const date = new Date(x.ts).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'long'});
+    s.appendChild(el('p','desc',`${esc(x.paidBy)} paid ${money(x.total)} · ${date}`));
+    if(x.description){ const d=el('div','card'); d.style.cssText='padding:13px 15px;margin-bottom:14px;font-size:14px;color:var(--ink-soft)'; d.textContent=x.description; s.appendChild(d); }
+    s.appendChild(el('div','section-eyebrow','Split'));
+    const box = el('div','card'); box.style.padding='4px 14px';
+    Object.keys(x.split||{}).forEach(nm=>{
+      const r=el('div','split-row');
+      r.innerHTML=`${avatar(nm,'sm')}<span class="name">${esc(nm)}${nm===x.paidBy?' <span style="color:var(--faint);font-weight:400">· paid</span>':''}</span><span class="num" style="font-weight:600">${money(x.split[nm])}</span>`;
+      box.appendChild(r);
+    });
+    s.appendChild(box);
+    if(x.receiptUrl){
+      const a=el('a','btn btn-ghost btn-block','📎 View receipt'); a.href=x.receiptUrl; a.target='_blank'; a.style.marginTop='12px'; s.appendChild(a);
+    }
+    const del = el('button','btn btn-block','Delete expense');
+    del.style.cssText='margin-top:12px;color:var(--neg);background:var(--neg-soft)';
+    del.onclick = async ()=>{
+      del.disabled=true; del.innerHTML='<span class="spin"></span>';
+      try{
+        if(SCRIPT_URL){ applyData(await api('deleteExpense',{id:x.id})); }
+        else { state.expenses=state.expenses.filter(e=>e.id!==x.id); }
+        closeSheet(); toast('Deleted'); renderAll();
+      }catch(e){ toast(e.message,'err'); del.disabled=false; del.innerHTML='Delete expense'; }
+    };
+    s.appendChild(del);
+  });
+}
+
+/* ---------------- File processing ---------------- */
+function processFile(file){
+  return new Promise((resolve,reject)=>{
+    if(file.type.startsWith('image/')){
+      const img=new Image(), reader=new FileReader();
+      reader.onload=()=>{ img.onload=()=>{
+        const max=1400; let {width:w,height:h}=img;
+        if(w>max||h>max){ const sc=max/Math.max(w,h); w=Math.round(w*sc); h=Math.round(h*sc); }
+        const c=document.createElement('canvas'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        const dataUrl=c.toDataURL('image/jpeg',0.82);
+        const b64=dataUrl.split(',')[1];
+        resolve({data:b64, name:file.name.replace(/\.[^.]+$/,'')+'.jpg', mimeType:'image/jpeg', size:Math.round(b64.length*0.75), preview:dataUrl});
+      }; img.onerror=reject; img.src=reader.result; };
+      reader.onerror=reject; reader.readAsDataURL(file);
+    } else {
+      const reader=new FileReader();
+      reader.onload=()=>{ const b64=reader.result.split(',')[1];
+        resolve({data:b64, name:file.name, mimeType:file.type||'application/octet-stream', size:file.size, preview:null}); };
+      reader.onerror=reject; reader.readAsDataURL(file);
+    }
+  });
+}
+
+/* ---------------- Misc ---------------- */
+function emptyState(ic,t,sub){
+  const e=el('div','empty');
+  e.innerHTML=`<div class="e-ic">${ic}</div><div class="e-t">${esc(t)}</div><div class="e-s">${esc(sub)}</div>`;
+  return e;
+}
+
+/* ---------------- Boot ---------------- */
+renderLogin();
+if(SCRIPT_URL){ refresh(); }
+</script>
+</body>
+</html>
