@@ -187,6 +187,11 @@
   .trip-route .line{flex:1; width:2px; background:repeating-linear-gradient(var(--line) 0 4px, transparent 4px 8px); margin:4px 0}
   .trip-route .inputs{flex:1}
   #map{height:200px; border-radius:var(--r); margin-top:14px; border:1px solid var(--line); background:var(--canvas); z-index:0}
+  .stop-dot{width:12px; height:12px; border-radius:50%; border:2.5px solid var(--brand); flex:none}
+  .stop-dot.end{border-color:var(--neg); border-radius:50% 50% 50% 0; transform:rotate(45deg)}
+  .stop-dot.mid{border-color:var(--muted)}
+  .stop-rm{width:32px; height:32px; border-radius:9px; background:var(--canvas); color:var(--muted); font-size:13px; flex:none; display:grid; place-items:center; border:1px solid var(--line)}
+  .stop-rm:active{transform:scale(.95)}
   .trip-result{display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line); border-radius:var(--r); overflow:hidden; margin-top:14px}
   .trip-result .cell{background:#fff; padding:14px 12px; text-align:center}
   .trip-result .cv{font-family:var(--display); font-weight:700; font-size:21px}
@@ -1130,34 +1135,43 @@ function quickEditorSheet(){
  *  TRIP / FUEL
  * ============================================================== */
 let _map, _layer;
-const trip = { origin:'', destination:'', vehicle:null, mpg:'', roundTrip:false, result:null };
+const trip = { stops:['',''], vehicle:null, mpg:'', result:null };
 function viewTrip(){
   const wrap = el('div');
   wrap.appendChild(el('div','page-title','Trip cost'));
-  wrap.appendChild(el('div','page-sub','Work out the fuel for a journey, then split it like any expense.'));
+  wrap.appendChild(el('div','page-sub','Add your stops, work out the fuel, then split it by who was actually in the car.'));
 
   const form = el('div','card'); form.style.padding='16px';
   form.innerHTML = `
-    <div class="trip-route">
-      <div class="pins"><span class="pin"></span><span class="line"></span><span class="pin end"></span></div>
-      <div class="inputs">
-        <div class="field" style="margin-bottom:10px"><input class="input" id="tFrom" placeholder="Start — e.g. Tyldesley" value="${esc(trip.origin)}"></div>
-        <div class="field" style="margin-bottom:0"><input class="input" id="tTo" placeholder="Destination — e.g. Manchester" value="${esc(trip.destination)}"></div>
-      </div>
-    </div>
+    <div id="stopsWrap"></div>
+    <button class="btn btn-ghost btn-sm" id="addStop" style="margin-top:2px">+ Add stop</button>
     <div class="field" style="margin-top:16px"><label>Vehicle</label>
       <select class="input" id="tVehicle"></select></div>
     <div class="field"><label>MPG</label><input class="input" id="tMpg" type="number" inputmode="decimal" placeholder="e.g. 45" value="${esc(trip.mpg)}"></div>
-    <div class="field"><label style="display:flex;align-items:center;gap:9px;cursor:pointer">
-      <input type="checkbox" id="tRound" ${trip.roundTrip?'checked':''} style="width:18px;height:18px;accent-color:var(--brand)"> Return journey (there and back)
-    </label></div>
     <button class="btn btn-primary btn-block" id="tCalc">Calculate fuel cost</button>
     <div id="tOut"></div>
   `;
   wrap.appendChild(form);
   form.appendChild(aaNote());
 
-  // vehicle select
+  function syncStops(){ [...form.querySelectorAll('.stop-input')].forEach((inp,i)=>{ trip.stops[i]=inp.value; }); }
+  function renderStops(){
+    const c = form.querySelector('#stopsWrap'); c.innerHTML='';
+    trip.stops.forEach((val,i)=>{
+      const last = i===trip.stops.length-1;
+      const ph = i===0 ? 'Start — e.g. Tyldesley' : last ? 'Destination' : 'Stop '+i;
+      const row = el('div'); row.style.cssText='display:flex;gap:10px;align-items:center;margin-bottom:8px';
+      row.innerHTML = `<span class="stop-dot ${i===0?'start':last?'end':'mid'}"></span>
+        <input class="input stop-input" placeholder="${ph}" value="${esc(val)}" style="flex:1">
+        ${trip.stops.length>2?`<button class="stop-rm" data-i="${i}" aria-label="Remove stop">✕</button>`:''}`;
+      c.appendChild(row);
+    });
+    c.querySelectorAll('.stop-input').forEach((inp,i)=>{ inp.oninput=()=>{ trip.stops[i]=inp.value; }; });
+    c.querySelectorAll('.stop-rm').forEach(b=>{ b.onclick=()=>{ syncStops(); trip.stops.splice(Number(b.dataset.i),1); renderStops(); }; });
+  }
+  renderStops();
+  form.querySelector('#addStop').onclick = ()=>{ syncStops(); trip.stops.push(''); renderStops(); };
+
   const sel = form.querySelector('#tVehicle');
   sel.innerHTML = `<option value="">— Manual entry —</option>` + state.vehicles.map(v=>`<option value="${esc(v.name)}">${esc(v.name)} · ${v.mpg} mpg</option>`).join('') + `<option value="__add">+ Save a vehicle…</option>`;
   sel.onchange = ()=>{
@@ -1169,22 +1183,20 @@ function viewTrip(){
   if(trip.vehicle) sel.value=trip.vehicle;
 
   form.querySelector('#tCalc').onclick = async ()=>{
-    trip.origin = form.querySelector('#tFrom').value.trim();
-    trip.destination = form.querySelector('#tTo').value.trim();
+    syncStops();
     trip.mpg = form.querySelector('#tMpg').value;
-    trip.roundTrip = form.querySelector('#tRound').checked;
-    if(!trip.origin||!trip.destination) return toast('Enter both places','err');
+    const stops = trip.stops.map(s=>s.trim()).filter(Boolean);
+    if(stops.length<2) return toast('Add at least a start and a destination','err');
     if(!(Number(trip.mpg)>0)) return toast('Enter the MPG','err');
     if(!SCRIPT_URL) return toast('Connect your sheet to use the map — it does the distance maths.','err');
     const btn = form.querySelector('#tCalc'); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Mapping route…';
     try{
-      const r = await api('calcTrip',{origin:trip.origin, destination:trip.destination, mpg:Number(trip.mpg), roundTrip:trip.roundTrip});
+      const r = await api('calcTrip',{stops, mpg:Number(trip.mpg)});
       trip.result = r; renderTripOut(form.querySelector('#tOut'));
     }catch(e){ toast(e.message,'err'); }
     finally{ btn.disabled=false; btn.innerHTML='Calculate fuel cost'; }
   };
 
-  // manage vehicles list
   if(state.vehicles.length){
     wrap.appendChild(el('div','section-eyebrow','Saved vehicles'));
     const vc = el('div','card'); vc.style.padding='4px 16px';
@@ -1206,35 +1218,157 @@ function viewTrip(){
   if(trip.result) setTimeout(()=>renderTripOut(form.querySelector('#tOut')),0);
   return wrap;
 }
+
+// Work out each person's share: each leg's cost is split only among
+// the people in the car for it (driver drives the whole way).
+function computeTripShares(r, sp){
+  const parts = [...sp.parts];
+  const legCount = r.legs.length;
+  const raw = {}; parts.forEach(p=>raw[p]=0);
+  let ok = true;
+  for(let i=0;i<legCount;i++){
+    const present = parts.filter(p=> (sp.exit[p]||legCount) >= i+1);
+    if(!present.length){ ok=false; continue; }
+    const c = r.legs[i].costExact!=null ? r.legs[i].costExact : r.legs[i].cost;
+    present.forEach(p=> raw[p]+= c/present.length);
+  }
+  const target = Math.round(r.cost*100);
+  const cents = {}; let sum=0;
+  parts.forEach(p=>{ cents[p]=Math.floor(raw[p]*100); sum+=cents[p]; });
+  const sorted = parts.slice().sort((a,b)=> (raw[b]*100-Math.floor(raw[b]*100)) - (raw[a]*100-Math.floor(raw[a]*100)));
+  let rem = target - sum, k=0;
+  while(rem>0 && sorted.length){ cents[sorted[k%sorted.length]]+=1; rem--; k++; }
+  while(rem<0 && sorted.length){ const p=sorted[sorted.length-1-(k%sorted.length)]; if(cents[p]>0){cents[p]-=1; rem++;} k++; }
+  const shares={}; parts.forEach(p=> shares[p]=cents[p]/100);
+  return {shares, ok, total:r.cost};
+}
+
 function renderTripOut(box){
   const r = trip.result; if(!r) return;
+  const sp = {
+    driver: state.people.some(p=>p.name===state.me)?state.me:(state.people[0]||{}).name,
+    parts: new Set(state.people.map(p=>p.name)),
+    exit: {}, date: todayISO()
+  };
+  state.people.forEach(p=> sp.exit[p.name]=r.legs.length);
+
   box.innerHTML = `
-    <div class="trip-result">
-      <div class="cell"><div class="cv num">${r.miles}</div><div class="cl">miles${r.roundTrip?' (return)':''}</div></div>
+    <div class="trip-result" style="margin-top:16px">
+      <div class="cell"><div class="cv num">${r.miles}</div><div class="cl">miles</div></div>
       <div class="cell"><div class="cv num">${r.litres}</div><div class="cl">litres</div></div>
       <div class="cell cost"><div class="cv num">${money(r.cost)}</div><div class="cl">fuel cost</div></div>
     </div>
     <div id="map"></div>
-    <button class="btn btn-primary btn-block" id="tripToExpense" style="margin-top:14px">Add as expense · ${money(r.cost)}</button>`;
-  box.querySelector('#tripToExpense').onclick = ()=>{
-    state.tab='add';
-    const prefill = { name:`Trip: ${r.origin} → ${r.destination}`, total:r.cost, type:'trip',
-      description:`${r.miles} miles${r.roundTrip?' return':''} · ${r.litres} L · ${trip.mpg} mpg @ ${fuelGBP()}/L` };
-    const v=$('#view'); v.innerHTML=''; v.appendChild(connBanner()); v.appendChild(viewAdd(prefill)); renderTabs();
-  };
+    <div class="section-eyebrow" style="margin-top:18px">Route</div>
+    <div class="card" id="legBox" style="padding:4px 14px;margin-bottom:4px"></div>
+    <div class="section-eyebrow" style="margin-top:18px">Who pays what</div>
+    <div id="splitPanel"></div>`;
+
+  const lb = box.querySelector('#legBox');
+  r.legs.forEach(l=>{
+    const row = el('div','split-row');
+    row.innerHTML = `<span class="name" style="flex:1;font-size:13.5px">${esc(l.from)} → ${esc(l.to)}</span>
+      <span class="num" style="color:var(--faint);font-size:12.5px;margin-right:12px">${l.miles} mi</span>
+      <span class="num" style="font-weight:600">${money(l.cost)}</span>`;
+    lb.appendChild(row);
+  });
+
+  const panel = box.querySelector('#splitPanel');
+  function renderPanel(){
+    panel.innerHTML='';
+    const dF = el('div','field'); dF.innerHTML='<label>Who drove &amp; paid for fuel?</label><div class="people-grid" id="trDriver"></div>';
+    panel.appendChild(dF);
+    drawChips(dF.querySelector('#trDriver'), p=>sp.driver===p, p=>{ sp.driver=p; sp.parts.add(p); sp.exit[p]=r.legs.length; renderPanel(); });
+
+    const pF = el('div','field'); pF.innerHTML='<label>Who was in the car?</label><div class="people-grid" id="trParts"></div>';
+    panel.appendChild(pF);
+    drawChips(pF.querySelector('#trParts'), p=>sp.parts.has(p), p=>{ if(p===sp.driver) return; sp.parts.has(p)?sp.parts.delete(p):sp.parts.add(p); renderPanel(); });
+
+    if(r.legs.length>1){
+      const eF = el('div','field'); eF.innerHTML='<label>Where did each person get out? <span class="hint">leave on the destination if they stayed in the whole way</span></label><div id="trExits"></div>';
+      panel.appendChild(eF);
+      const c = eF.querySelector('#trExits');
+      [...sp.parts].forEach(nm=>{
+        const isDriver = nm===sp.driver;
+        const row = el('div','split-row');
+        row.innerHTML = `${avatar(nm,'sm')}<span class="name">${esc(nm)}</span>`;
+        const selx = el('select','input'); selx.style.cssText='width:auto;max-width:56%;padding:8px 10px;font-size:13px';
+        let opts=''; for(let i=1;i<r.stops.length;i++){ opts+=`<option value="${i}" ${(isDriver?r.stops.length-1:sp.exit[nm])===i?'selected':''}>${esc(r.stops[i])}</option>`; }
+        selx.innerHTML=opts; selx.disabled=isDriver;
+        selx.onchange=()=>{ sp.exit[nm]=Number(selx.value); renderPanel(); };
+        row.appendChild(selx);
+        c.appendChild(row);
+      });
+    }
+
+    const sh = computeTripShares(r, sp);
+    const card = el('div','card'); card.style.cssText='padding:4px 14px;margin-top:4px';
+    [...sp.parts].forEach(nm=>{
+      const isDriver = nm===sp.driver;
+      const row = el('div','split-row');
+      const out = sp.exit[nm] < r.stops.length-1 ? ` <span style="color:var(--faint);font-weight:400">· out at ${esc(r.stops[sp.exit[nm]])}</span>` : '';
+      row.innerHTML = `${avatar(nm,'sm')}<span class="name">${esc(nm)}${isDriver?' <span style="color:var(--faint);font-weight:400">· paid</span>':out}</span><span class="num" style="font-weight:600">${money(sh.shares[nm]||0)}</span>`;
+      card.appendChild(row);
+    });
+    panel.appendChild(card);
+
+    const dt = el('div','field'); dt.style.marginTop='12px';
+    dt.innerHTML = `<label>Date</label><input class="input" id="trDate" type="date" value="${sp.date}" max="${todayISO()}">`;
+    panel.appendChild(dt);
+    dt.querySelector('#trDate').onchange = e=>{ sp.date=e.target.value; };
+
+    const btn = el('button','btn btn-primary btn-block','Log trip · '+money(r.cost));
+    btn.onclick = ()=>logTrip(r, sp, btn);
+    panel.appendChild(btn);
+  }
+  function drawChips(g, isOn, onClick){
+    g.innerHTML='';
+    state.people.forEach(p=>{
+      const b = el('button','pchip'+(isOn(p.name)?' on':''));
+      b.innerHTML = `${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+      b.onclick = ()=>onClick(p.name);
+      g.appendChild(b);
+    });
+  }
+  renderPanel();
   setTimeout(()=>drawMap(r),50);
 }
+
+async function logTrip(r, sp, btn){
+  const sh = computeTripShares(r, sp);
+  if(!sh.ok) return toast('Every leg needs at least one person in the car','err');
+  const split={}; Object.keys(sh.shares).forEach(p=>{ if(sh.shares[p]>0) split[p]=sh.shares[p]; });
+  if(!Object.keys(split).length) return toast('Nobody is set to pay for this trip','err');
+  const exits = [...sp.parts].filter(p=>p!==sp.driver && sp.exit[p] < r.stops.length-1)
+    .map(p=>`${p} out at ${r.stops[sp.exit[p]]}`).join(', ');
+  const payload = {
+    name:`Trip: ${r.stops[0]} → ${r.stops[r.stops.length-1]}`,
+    total:r.cost, paidBy:sp.driver, split, type:'trip',
+    description:`${r.stops.join(' → ')} · ${r.miles} mi · ${r.litres} L · ${trip.mpg} mpg @ ${fuelGBP()}/L${exits?(' · '+exits):''}`,
+    ts: tsFromISO(sp.date)
+  };
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+  try{
+    if(SCRIPT_URL){ applyData(await api('addExpense',payload)); }
+    else { state.expenses.unshift({id:'local_'+Date.now(),receiptUrl:'',...payload}); state.expenses.sort((a,b)=>b.ts-a.ts); }
+    trip.result=null; toast('Trip logged'); state.tab='balances'; renderAll();
+  }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Log trip · '+money(r.cost); }
+}
+
 function drawMap(r){
   const node = document.getElementById('map'); if(!node||typeof L==='undefined') return;
   if(_map){ _map.remove(); _map=null; }
   _map = L.map(node,{zoomControl:false, attributionControl:false});
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(_map);
-  const a=[r.start.lat,r.start.lng], b=[r.end.lat,r.end.lng];
-  const pts = r.polyline ? decodePolyline(r.polyline) : [a,b];
-  const line = L.polyline(pts,{color:'#0E7C66',weight:4,opacity:.9}).addTo(_map);
-  L.circleMarker(a,{radius:7,color:'#0E7C66',fillColor:'#0E7C66',fillOpacity:1}).addTo(_map);
-  L.circleMarker(b,{radius:7,color:'#E5564B',fillColor:'#E5564B',fillOpacity:1}).addTo(_map);
-  _map.fitBounds(line.getBounds().pad(0.15));
+  const pts = r.polyline ? decodePolyline(r.polyline) : (r.points||[]);
+  let line;
+  if(pts.length){ line = L.polyline(pts,{color:'#0E7C66',weight:4,opacity:.9}).addTo(_map); }
+  (r.points||[]).forEach((pt,i)=>{
+    const last = i===r.points.length-1;
+    L.circleMarker(pt,{radius:7,color:last?'#E5564B':'#0E7C66',fillColor:last?'#E5564B':'#0E7C66',fillOpacity:1,weight:2}).addTo(_map);
+  });
+  if(line) _map.fitBounds(line.getBounds().pad(0.15));
+  else if(r.points&&r.points.length) _map.fitBounds(L.latLngBounds(r.points).pad(0.2));
   setTimeout(()=>_map.invalidateSize(),100);
 }
 function decodePolyline(str){
