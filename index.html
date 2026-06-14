@@ -49,6 +49,12 @@
   .me-chip{display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line);
     padding:5px 11px 5px 5px; border-radius:999px; font-weight:600; font-size:13px; box-shadow:var(--shadow)}
   .me-chip:active{transform:scale(.97)}
+  .icon-btn{width:38px; height:38px; border-radius:50%; background:var(--card); border:1px solid var(--line); display:grid; place-items:center; color:var(--muted); box-shadow:var(--shadow)}
+  .icon-btn svg{width:19px; height:19px}
+  .icon-btn:active{transform:scale(.95)}
+  .icon-btn.active{color:var(--brand); border-color:var(--brand)}
+  .note{display:flex; gap:9px; align-items:flex-start; background:#0E7C6608; border:1px solid #0E7C6622; border-radius:var(--r-sm); padding:11px 13px; font-size:12.5px; color:var(--ink-soft); line-height:1.5; margin-top:14px}
+  .note .ni{flex:none; font-size:14px; line-height:1.3}
 
   main{flex:1; padding:18px 18px 110px}
 
@@ -269,6 +275,7 @@
   <div class="topbar">
     <div class="wordmark"><span class="dot"></span>Split</div>
     <div class="spacer"></div>
+    <button class="icon-btn" id="gearBtn" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
     <button class="me-chip" id="meChip"></button>
   </div>
   <main id="view"></main>
@@ -295,9 +302,11 @@ const PALETTE = ['#E5564B','#1DAA6B','#3B82F6','#F59E0B','#8B5CF6','#EC4899','#0
 const SEED_PEOPLE = ['Owen','Alex','Conor','Ben','Alice','Lucy'];
 const state = {
   people: SEED_PEOPLE.map((n,i)=>({name:n,color:PALETTE[i%PALETTE.length]})),
-  vehicles: [], quick: [], expenses: [],
+  vehicles: [], quick: [], quickTrips: [], expenses: [], settings: { fuelPence: 156 },
   me: null, tab: 'balances', connected: false, loading: false
 };
+const fuelPence = () => (state.settings && state.settings.fuelPence) || 156;
+const fuelGBP = () => '£'+ (fuelPence()/100).toFixed(2);
 
 /* ---------------- Helpers ---------------- */
 const $ = s => document.querySelector(s);
@@ -307,6 +316,11 @@ const money = n => '£'+(Math.round(Number(n)*100)/100).toFixed(2);
 const initials = n => n.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
 const personColor = n => (state.people.find(p=>p.name===n)||{}).color || '#717784';
 const avatar = (name, size='sm') => `<span class="av ${size}" style="background:${personColor(name)}">${esc(initials(name))}</span>`;
+const todayISO = () => { const d=new Date(), z=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`; };
+const tsFromISO = iso => { if(!iso) return Date.now(); const [y,m,d]=iso.split('-').map(Number); return new Date(y,(m||1)-1,d||1,12,0,0).getTime(); };
+const fmtDate = ts => new Date(ts).toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+// true when an expense/transfer creates a debt between a and b
+const involvesPair = (x,a,b) => { const sp=x.split||{}; return (x.paidBy===a && sp[b]!=null) || (x.paidBy===b && sp[a]!=null); };
 
 /* ---------------- Backend ---------------- */
 async function api(action, payload){
@@ -325,6 +339,8 @@ function applyData(d){
   state.people = d.people && d.people.length ? d.people : state.people;
   state.vehicles = d.vehicles || [];
   state.quick = d.quick || [];
+  state.quickTrips = d.quickTrips || [];
+  if(d.settings) state.settings = d.settings;
   state.expenses = (d.expenses||[]).sort((a,b)=>b.ts-a.ts);
   if(state.me && !state.people.some(p=>p.name===state.me)) state.me = null;
 }
@@ -485,6 +501,8 @@ function switchUserSheet(){
 function renderAll(){
   if(!state.me){ $('#app').style.display='none'; $('#login').style.display='flex'; renderLogin(); return; }
   renderMeChip(); renderTabs();
+  $('#gearBtn').classList.toggle('active', state.tab==='settings');
+  $('#gearBtn').onclick = ()=>{ state.tab='settings'; renderAll(); };
   const v = $('#view'); v.innerHTML='';
   v.appendChild(connBanner());
   if(state.tab==='balances') v.appendChild(viewBalances());
@@ -492,6 +510,7 @@ function renderAll(){
   if(state.tab==='quick') v.appendChild(viewQuick());
   if(state.tab==='trip') v.appendChild(viewTrip());
   if(state.tab==='activity') v.appendChild(viewActivity());
+  if(state.tab==='settings') v.appendChild(viewSettings());
 }
 
 /* ---------------- Connection banner ---------------- */
@@ -540,6 +559,12 @@ function viewBalances(){
   card.innerHTML = `<div class="lbl">${lbl}</div><div class="big num">${big}</div><div class="sub">${sub}</div>`;
   wrap.appendChild(card);
 
+  if(state.people.length>1){
+    const pay = el('button','btn btn-ghost btn-block','💸  Record a payment');
+    pay.style.marginBottom='18px';
+    pay.onclick = ()=>transferSheet({});
+    wrap.appendChild(pay);
+  }
   wrap.appendChild(el('div','section-eyebrow','Person by person'));
   const list = el('div','card');
   const sorted = rows.slice().sort((a,b)=>Math.abs(b.net)-Math.abs(a.net));
@@ -576,29 +601,116 @@ function viewBalances(){
 }
 
 function personDetailSheet(other){
-  const shared = state.expenses.filter(x=> x.split && (x.split[other]!=null || x.split[state.me]!=null) && (x.paidBy===other||x.paidBy===state.me) && (x.split[other]!=null && x.paidBy===state.me || x.split[state.me]!=null && x.paidBy===other));
+  const linked = state.expenses.filter(x=>involvesPair(x,state.me,other));
+  const net = computeBalances().rows.find(r=>r.name===other);
+  const netVal = net ? net.net : 0;
   openSheet(s=>{
     s.appendChild(el('h2',null,`You & ${esc(other)}`));
-    s.appendChild(el('p','desc','Expenses between the two of you.'));
-    if(!shared.length){ s.appendChild(emptyState('🧾','Nothing shared yet','No expenses link you two so far.')); return; }
+    const settled = Math.abs(netVal)<0.01;
+    s.appendChild(el('p','desc', settled ? 'You’re all settled up.' :
+      (netVal>0 ? `${esc(other)} owes you ${money(netVal)}.` : `You owe ${esc(other)} ${money(-netVal)}.`)));
+
+    // Settle-up shortcut, prefilled
+    const pay = el('button','btn btn-primary btn-block', settled ? '💸  Record a payment' :
+      (netVal<0 ? `💸  Pay ${esc(other)} ${money(-netVal)}` : `💸  Record ${esc(other)} paying you`));
+    pay.style.marginBottom='16px';
+    pay.onclick = ()=>{ closeSheet(); transferSheet({other, dir: netVal<0?'out':'in', amount: settled?'':Math.abs(netVal).toFixed(2)}); };
+    s.appendChild(pay);
+
+    if(!linked.length){ s.appendChild(emptyState('🧾','Nothing between you yet','No expenses or payments link you two so far.')); return; }
+    s.appendChild(el('div','section-eyebrow','History'));
     const list = el('div','card'); list.style.marginBottom='8px';
-    shared.forEach(x=>{
+    linked.forEach(x=>{
       const youPaid = x.paidBy===state.me;
       const amt = youPaid ? (x.split[other]||0) : (x.split[state.me]||0);
+      const isT = x.type==='transfer';
+      const label = isT ? (youPaid?'You paid '+esc(other):esc(other)+' paid you')
+                        : (youPaid?'You paid · they owe':'They paid · you owe');
       const row = el('div','act-row');
       row.innerHTML = `<div class="act-ic">${typeIcon(x)}</div>
         <div class="act-main"><div class="at">${esc(x.name)}</div>
-        <div class="am">${youPaid?'You paid · they owe':'They paid · you owe'}</div></div>
-        <div class="act-right"><div class="tot num ${youPaid?'pos-c':'neg-c'}">${money(amt)}</div></div>`;
+        <div class="am">${label} · ${fmtDate(x.ts)}</div></div>
+        <div class="act-right"><div class="tot num ${youPaid?'pos-c':'neg-c'}">${youPaid?'+':'−'}${money(amt)}</div></div>`;
       list.appendChild(row);
     });
     s.appendChild(list);
   });
 }
 
-/* ============================================================== *
- *  ADD EXPENSE
- * ============================================================== */
+/* ---- Record a payment / transfer ---- */
+function transferSheet(opts){
+  opts = opts || {};
+  const fs = { dir: opts.dir || 'out', other: opts.other || null, date: todayISO() };
+  openSheet(s=>{
+    s.appendChild(el('h2',null,'Record a payment'));
+    s.appendChild(el('p','desc','Money sent directly to settle up — it counts against what’s owed.'));
+
+    const dirF = el('div','field');
+    dirF.innerHTML = `<label>Direction</label>
+      <div class="seg" id="trDir">
+        <button data-d="out" class="${fs.dir==='out'?'active':''}">You paid</button>
+        <button data-d="in" class="${fs.dir==='in'?'active':''}">You were paid</button>
+      </div>`;
+    s.appendChild(dirF);
+
+    const whoF = el('div','field'); whoF.innerHTML = `<label id="whoLbl"></label><div class="people-grid" id="trWho"></div>`;
+    s.appendChild(whoF);
+
+    const amtF = el('div','field');
+    amtF.innerHTML = `<label>Amount</label><div class="money-input"><span class="sym">£</span>
+      <input class="input" id="trAmt" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${esc(opts.amount||'')}"></div>`;
+    s.appendChild(amtF);
+
+    const dateF = el('div','field');
+    dateF.innerHTML = `<label>Date</label><input class="input" id="trDate" type="date" value="${fs.date}" max="${todayISO()}">`;
+    s.appendChild(dateF);
+
+    const noteF = el('div','field');
+    noteF.innerHTML = `<label>Note <span class="hint">optional</span></label><input class="input" id="trNote" placeholder="e.g. bank transfer">`;
+    s.appendChild(noteF);
+
+    const btn = el('button','btn btn-primary btn-block','Record payment');
+    s.appendChild(btn);
+
+    function drawWho(){
+      whoF.querySelector('#whoLbl').textContent = fs.dir==='out' ? 'Paid to' : 'Received from';
+      const g = whoF.querySelector('#trWho'); g.innerHTML='';
+      state.people.filter(p=>p.name!==state.me).forEach(p=>{
+        const b = el('button','pchip'+(fs.other===p.name?' on':''));
+        b.innerHTML = `${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+        b.onclick = ()=>{ fs.other=p.name; drawWho(); };
+        g.appendChild(b);
+      });
+    }
+    drawWho();
+    dirF.querySelector('#trDir').addEventListener('click', e=>{
+      const b=e.target.closest('button'); if(!b) return; fs.dir=b.dataset.d;
+      [...dirF.querySelectorAll('#trDir button')].forEach(x=>x.classList.toggle('active',x===b));
+      drawWho();
+    });
+
+    btn.onclick = async ()=>{
+      const amount = Number(s.querySelector('#trAmt').value)||0;
+      if(!fs.other) return toast('Choose a person','err');
+      if(!(amount>0)) return toast('Enter an amount','err');
+      const from = fs.dir==='out' ? state.me : fs.other;
+      const to   = fs.dir==='out' ? fs.other : state.me;
+      const note = s.querySelector('#trNote').value.trim();
+      const payload = {
+        name:`Payment: ${from} → ${to}`, description:note, paidBy:from, total:amount,
+        split:{ [to]:amount }, type:'transfer', ts: tsFromISO(s.querySelector('#trDate').value)
+      };
+      btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+      try{
+        if(SCRIPT_URL){ applyData(await api('addExpense',payload)); }
+        else { state.expenses.unshift({id:'local_'+Date.now(),receiptUrl:'',...payload}); state.expenses.sort((a,b)=>b.ts-a.ts); }
+        closeSheet(); toast('Payment recorded'); state.tab='balances'; renderAll();
+      }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Record payment'; }
+    };
+  });
+}
+
+
 const draft = { receipt:null };
 function viewAdd(prefill){
   draft.receipt = null;
@@ -613,6 +725,8 @@ function viewAdd(prefill){
     <div class="field"><label>Amount</label>
       <div class="money-input"><span class="sym">£</span>
       <input class="input" id="exTotal" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${prefill&&prefill.total||''}"></div></div>
+    <div class="field"><label>Date</label>
+      <input class="input" id="exDate" type="date" value="${(prefill&&prefill.date)||todayISO()}" max="${todayISO()}"></div>
     <div class="field"><label>Description <span class="hint">optional</span></label>
       <textarea class="input" id="exDesc" placeholder="Anything worth noting">${esc(prefill&&prefill.description||'')}</textarea></div>
     <div class="field"><label>Paid by</label>
@@ -766,14 +880,15 @@ function viewAdd(prefill){
     const name = form.querySelector('#exName').value.trim();
     const total = Number(form.querySelector('#exTotal').value)||0;
     const desc = form.querySelector('#exDesc').value.trim();
+    const ts = tsFromISO(form.querySelector('#exDate').value);
     const {split, ok} = currentSplit();
     if(!ok || !name) return;
-    const payload = { name, total, description:desc, paidBy:fs.paidBy, split, type:(prefill&&prefill.type)||'expense' };
+    const payload = { name, total, description:desc, paidBy:fs.paidBy, split, type:(prefill&&prefill.type)||'expense', ts };
     if(draft.receipt) payload.receipt = { data:draft.receipt.data, name:draft.receipt.name, mimeType:draft.receipt.mimeType };
     const btn = form.querySelector('#saveExpense'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
     try{
       if(SCRIPT_URL){ applyData(await api('addExpense', payload)); }
-      else { state.expenses.unshift({id:'local_'+Date.now(),ts:Date.now(),receiptUrl:'',...payload}); }
+      else { state.expenses.unshift({id:'local_'+Date.now(),receiptUrl:'',...payload}); state.expenses.sort((a,b)=>b.ts-a.ts); }
       toast('Expense saved'); state.tab='balances'; renderAll();
     }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save expense'; }
   };
@@ -787,8 +902,10 @@ function viewAdd(prefill){
  * ============================================================== */
 function viewQuick(){
   const wrap = el('div');
-  wrap.appendChild(el('div','page-title','Quick expenses'));
+  wrap.appendChild(el('div','page-title','Quick add'));
   wrap.appendChild(el('div','page-sub','One tap to log the things that happen again and again.'));
+
+  wrap.appendChild(el('div','section-eyebrow','Quick expenses'));
   const grid = el('div','quick-grid');
   state.quick.forEach(q=>{
     const b = el('button','quick-btn');
@@ -806,7 +923,131 @@ function viewQuick(){
   add.onclick = ()=>quickEditorSheet();
   grid.appendChild(add);
   wrap.appendChild(grid);
+
+  const eb = el('div','section-eyebrow','Quick trips'); eb.style.marginTop='24px';
+  wrap.appendChild(eb);
+  const tgrid = el('div','quick-grid');
+  state.quickTrips.forEach(q=>{
+    const b = el('button','quick-btn');
+    const splitTxt = q.split==='all'||!Array.isArray(q.split) ? 'Split with everyone' : `Split with ${q.split.length}`;
+    b.innerHTML = `<button class="del" title="Delete">✕</button>
+      <span class="emo">${esc(q.emoji||'🚗')}</span>
+      <div class="ql">${esc(q.label)}</div>
+      <div class="qs" style="margin-top:4px">${esc(q.origin)} → ${esc(q.destination)}</div>
+      <div class="qs">${q.mpg} mpg${q.roundTrip?' · return':''} · ${splitTxt}</div>`;
+    b.onclick = ()=>logQuickTrip(q);
+    b.querySelector('.del').onclick = (e)=>{ e.stopPropagation(); deleteQuickTrip(q); };
+    tgrid.appendChild(b);
+  });
+  const addT = el('button','quick-btn quick-add','+ New quick trip');
+  addT.onclick = ()=>quickTripEditorSheet();
+  tgrid.appendChild(addT);
+  wrap.appendChild(tgrid);
+
   return wrap;
+}
+async function deleteQuickTrip(q){
+  if(SCRIPT_URL){ try{ applyData(await api('deleteQuickTrip',{label:q.label})); toast('Removed'); }catch(e){ toast(e.message,'err'); } }
+  else { state.quickTrips = state.quickTrips.filter(x=>x!==q); }
+  renderAll();
+}
+async function logQuickTrip(q){
+  if(!SCRIPT_URL) return toast('Connect your sheet to calculate trips.','err');
+  toast('Mapping route…');
+  let r;
+  try{ r = await api('calcTrip',{origin:q.origin, destination:q.destination, mpg:q.mpg, roundTrip:q.roundTrip}); }
+  catch(e){ return toast(e.message,'err'); }
+  const names = (q.split==='all'||!Array.isArray(q.split)) ? state.people.map(p=>p.name) : q.split.filter(n=>state.people.some(p=>p.name===n));
+  const fs = { paidBy: state.me };
+  openSheet(s=>{
+    s.appendChild(el('h2',null,`${q.emoji||'🚗'} ${esc(q.label)}`));
+    s.appendChild(el('p','desc',`${esc(r.origin)} → ${esc(r.destination)}`));
+    const res = el('div','trip-result'); res.style.marginTop='0';
+    res.innerHTML = `<div class="cell"><div class="cv num">${r.miles}</div><div class="cl">miles${r.roundTrip?' (return)':''}</div></div>
+      <div class="cell"><div class="cv num">${r.litres}</div><div class="cl">litres</div></div>
+      <div class="cell cost"><div class="cv num">${money(r.cost)}</div><div class="cl">fuel cost</div></div>`;
+    s.appendChild(res);
+    const f = el('div','field'); f.style.marginTop='16px'; f.innerHTML='<label>Paid by</label><div class="people-grid" id="qtPaid"></div>';
+    s.appendChild(f);
+    const draw=()=>{ const g=f.querySelector('#qtPaid'); g.innerHTML='';
+      state.people.forEach(p=>{ const b=el('button','pchip'+(fs.paidBy===p.name?' on':''));
+        b.innerHTML=`${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+        b.onclick=()=>{fs.paidBy=p.name; draw();}; g.appendChild(b); }); };
+    draw();
+    const dF = el('div','field'); dF.innerHTML=`<label>Date</label><input class="input" id="qtDate" type="date" value="${todayISO()}" max="${todayISO()}">`;
+    s.appendChild(dF);
+    const info = el('div','split-summary good');
+    info.innerHTML = `<span>Split equally · ${names.length} people</span><span class="v num">${money(r.cost)}</span>`;
+    s.appendChild(info);
+    s.appendChild(aaNote());
+    const btn = el('button','btn btn-primary btn-block','Log '+money(r.cost)); btn.style.marginTop='14px';
+    btn.onclick = async ()=>{
+      const cents=Math.round(r.cost*100), n=names.length||1, base=Math.floor(cents/n); let rem=cents-base*n;
+      const split={}; names.forEach((nm,i)=>split[nm]=(base+(i<rem?1:0))/100);
+      const payload={ name:`Trip: ${r.origin} → ${r.destination}`, total:r.cost, paidBy:fs.paidBy, split, type:'trip',
+        description:`${r.miles} miles${r.roundTrip?' return':''} · ${r.litres} L · ${q.mpg} mpg @ ${fuelGBP()}/L`,
+        ts: tsFromISO(s.querySelector('#qtDate').value) };
+      btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+      try{ applyData(await api('addExpense',payload)); closeSheet(); toast('Trip logged'); state.tab='balances'; renderAll(); }
+      catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Log '+money(r.cost); }
+    };
+    s.appendChild(btn);
+  });
+}
+function quickTripEditorSheet(){
+  openSheet(s=>{
+    s.appendChild(el('h2',null,'New quick trip'));
+    s.appendChild(el('p','desc','A journey you make often — saved so you can log it in one tap.'));
+    s.innerHTML += `
+      <div style="display:flex;gap:12px">
+        <div class="field" style="flex:none;width:80px"><label>Emoji</label><input class="input" id="qtEmoji" maxlength="2" placeholder="🚗" style="text-align:center;font-size:22px"></div>
+        <div class="field" style="flex:1"><label>Label</label><input class="input" id="qtLabel" placeholder="e.g. Footy training"></div>
+      </div>
+      <div class="field"><label>Start</label><input class="input" id="qtFrom" placeholder="e.g. Tyldesley"></div>
+      <div class="field"><label>Destination</label><input class="input" id="qtTo" placeholder="e.g. Leigh Sports Village"></div>
+      <div class="field"><label>Vehicle</label><select class="input" id="qtVeh"></select></div>
+      <div class="field"><label>MPG</label><input class="input" id="qtMpg" type="number" inputmode="decimal" placeholder="e.g. 45"></div>
+      <div class="field"><label style="display:flex;align-items:center;gap:9px;cursor:pointer">
+        <input type="checkbox" id="qtRound" style="width:18px;height:18px;accent-color:var(--brand)"> Return journey</label></div>
+      <div class="field"><label>Split between</label><div class="people-grid" id="qtSplit"></div></div>`;
+    const veh = s.querySelector('#qtVeh');
+    veh.innerHTML = `<option value="">— Manual MPG —</option>` + state.vehicles.map(v=>`<option value="${esc(v.name)}">${esc(v.name)} · ${v.mpg} mpg</option>`).join('');
+    veh.onchange = ()=>{ const v=state.vehicles.find(x=>x.name===veh.value); if(v) s.querySelector('#qtMpg').value=v.mpg; };
+    const sel = new Set(state.people.map(p=>p.name));
+    const drawS=()=>{ const g=s.querySelector('#qtSplit'); g.innerHTML='';
+      const all=el('button','pchip'+(sel.size===state.people.length?' on':'')); all.innerHTML='Everyone<span class="tick">✓</span>';
+      all.onclick=()=>{ if(sel.size===state.people.length)sel.clear(); else state.people.forEach(p=>sel.add(p.name)); drawS(); };
+      g.appendChild(all);
+      state.people.forEach(p=>{ const b=el('button','pchip'+(sel.has(p.name)?' on':''));
+        b.innerHTML=`${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+        b.onclick=()=>{ sel.has(p.name)?sel.delete(p.name):sel.add(p.name); drawS(); }; g.appendChild(b); }); };
+    drawS();
+    const btn = el('button','btn btn-primary btn-block','Create quick trip');
+    btn.onclick = async ()=>{
+      const label=s.querySelector('#qtLabel').value.trim();
+      const origin=s.querySelector('#qtFrom').value.trim();
+      const destination=s.querySelector('#qtTo').value.trim();
+      const mpg=Number(s.querySelector('#qtMpg').value)||0;
+      if(!label) return toast('Give it a label','err');
+      if(!origin||!destination) return toast('Enter both places','err');
+      if(!(mpg>0)) return toast('Enter the MPG','err');
+      const split = sel.size===state.people.length ? 'all' : [...sel];
+      const q = { label, emoji:s.querySelector('#qtEmoji').value.trim()||'🚗', origin, destination,
+        vehicle:s.querySelector('#qtVeh').value||'', mpg, roundTrip:s.querySelector('#qtRound').checked, split };
+      btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+      try{
+        if(SCRIPT_URL){ applyData(await api('addQuickTrip',q)); }
+        else { state.quickTrips.push(q); }
+        closeSheet(); toast('Quick trip created'); renderAll();
+      }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Create quick trip'; }
+    };
+    s.appendChild(btn);
+  });
+}
+function aaNote(){
+  const n = el('div','note');
+  n.innerHTML = `<span class="ni">⛽</span><span>The cost of unleaded is set to the AA UK average (currently ${fuelGBP()}/litre) and is reviewed every 4 weeks. Change it under Settings.</span>`;
+  return n;
 }
 function logQuick(q){
   openSheet(s=>{
@@ -821,6 +1062,8 @@ function logQuick(q){
         b.innerHTML=`${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
         b.onclick=()=>{fs.paidBy=p.name; draw();}; g.appendChild(b); }); };
     draw();
+    const dF = el('div','field'); dF.innerHTML = `<label>Date</label><input class="input" id="qDate" type="date" value="${todayISO()}" max="${todayISO()}">`;
+    s.appendChild(dF);
     const info = el('div','split-summary good');
     info.innerHTML = `<span>Split equally · ${names.length} people</span><span class="v num">${money(q.amount)}</span>`;
     s.appendChild(info);
@@ -828,11 +1071,11 @@ function logQuick(q){
     btn.onclick = async ()=>{
       const cents=Math.round(q.amount*100), n=names.length||1, base=Math.floor(cents/n); let rem=cents-base*n;
       const split={}; names.forEach((nm,i)=>split[nm]=(base+(i<rem?1:0))/100);
-      const payload={ name:q.label, total:q.amount, description:q.description||'', paidBy:fs.paidBy, split, type:'quick' };
+      const payload={ name:q.label, total:q.amount, description:q.description||'', paidBy:fs.paidBy, split, type:'quick', ts: tsFromISO(s.querySelector('#qDate').value) };
       btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
       try{
         if(SCRIPT_URL){ applyData(await api('addExpense',payload)); }
-        else { state.expenses.unshift({id:'local_'+Date.now(),ts:Date.now(),receiptUrl:'',...payload}); }
+        else { state.expenses.unshift({id:'local_'+Date.now(),receiptUrl:'',...payload}); state.expenses.sort((a,b)=>b.ts-a.ts); }
         closeSheet(); toast(q.label+' logged'); state.tab='balances'; renderAll();
       }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Log '+money(q.amount); }
     };
@@ -887,7 +1130,7 @@ function quickEditorSheet(){
  *  TRIP / FUEL
  * ============================================================== */
 let _map, _layer;
-const trip = { origin:'', destination:'', vehicle:null, mpg:'', pence:'145', roundTrip:false, result:null };
+const trip = { origin:'', destination:'', vehicle:null, mpg:'', roundTrip:false, result:null };
 function viewTrip(){
   const wrap = el('div');
   wrap.appendChild(el('div','page-title','Trip cost'));
@@ -904,10 +1147,7 @@ function viewTrip(){
     </div>
     <div class="field" style="margin-top:16px"><label>Vehicle</label>
       <select class="input" id="tVehicle"></select></div>
-    <div style="display:flex;gap:12px">
-      <div class="field" style="flex:1"><label>MPG</label><input class="input" id="tMpg" type="number" inputmode="decimal" placeholder="e.g. 45" value="${esc(trip.mpg)}"></div>
-      <div class="field" style="flex:1"><label>Fuel <span class="hint">p/litre</span></label><input class="input" id="tPence" type="number" inputmode="decimal" placeholder="145" value="${esc(trip.pence)}"></div>
-    </div>
+    <div class="field"><label>MPG</label><input class="input" id="tMpg" type="number" inputmode="decimal" placeholder="e.g. 45" value="${esc(trip.mpg)}"></div>
     <div class="field"><label style="display:flex;align-items:center;gap:9px;cursor:pointer">
       <input type="checkbox" id="tRound" ${trip.roundTrip?'checked':''} style="width:18px;height:18px;accent-color:var(--brand)"> Return journey (there and back)
     </label></div>
@@ -915,6 +1155,7 @@ function viewTrip(){
     <div id="tOut"></div>
   `;
   wrap.appendChild(form);
+  form.appendChild(aaNote());
 
   // vehicle select
   const sel = form.querySelector('#tVehicle');
@@ -923,7 +1164,7 @@ function viewTrip(){
     if(sel.value==='__add'){ sel.value=trip.vehicle||''; vehicleEditorSheet(); return; }
     trip.vehicle = sel.value;
     const v = state.vehicles.find(x=>x.name===sel.value);
-    if(v){ form.querySelector('#tMpg').value=v.mpg||''; if(v.pence) form.querySelector('#tPence').value=v.pence; }
+    if(v){ form.querySelector('#tMpg').value=v.mpg||''; }
   };
   if(trip.vehicle) sel.value=trip.vehicle;
 
@@ -931,14 +1172,13 @@ function viewTrip(){
     trip.origin = form.querySelector('#tFrom').value.trim();
     trip.destination = form.querySelector('#tTo').value.trim();
     trip.mpg = form.querySelector('#tMpg').value;
-    trip.pence = form.querySelector('#tPence').value;
     trip.roundTrip = form.querySelector('#tRound').checked;
     if(!trip.origin||!trip.destination) return toast('Enter both places','err');
     if(!(Number(trip.mpg)>0)) return toast('Enter the MPG','err');
     if(!SCRIPT_URL) return toast('Connect your sheet to use the map — it does the distance maths.','err');
     const btn = form.querySelector('#tCalc'); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Mapping route…';
     try{
-      const r = await api('calcTrip',{origin:trip.origin, destination:trip.destination, mpg:Number(trip.mpg), pence:Number(trip.pence), roundTrip:trip.roundTrip});
+      const r = await api('calcTrip',{origin:trip.origin, destination:trip.destination, mpg:Number(trip.mpg), roundTrip:trip.roundTrip});
       trip.result = r; renderTripOut(form.querySelector('#tOut'));
     }catch(e){ toast(e.message,'err'); }
     finally{ btn.disabled=false; btn.innerHTML='Calculate fuel cost'; }
@@ -951,7 +1191,7 @@ function viewTrip(){
     state.vehicles.forEach(v=>{
       const r = el('div','veh-row');
       r.innerHTML = `<div class="act-ic">🚗</div><div style="flex:1"><div class="vn">${esc(v.name)}</div>
-        <div class="vm">${v.mpg} mpg${v.pence?` · ${v.pence}p/litre`:''}</div></div>
+        <div class="vm">${v.mpg} mpg</div></div>
         <button class="btn btn-ghost btn-sm vdel">Remove</button>`;
       r.querySelector('.vdel').onclick = async ()=>{
         if(SCRIPT_URL){ try{ applyData(await api('deleteVehicle',{name:v.name})); toast('Removed'); }catch(e){ toast(e.message,'err'); } }
@@ -979,7 +1219,7 @@ function renderTripOut(box){
   box.querySelector('#tripToExpense').onclick = ()=>{
     state.tab='add';
     const prefill = { name:`Trip: ${r.origin} → ${r.destination}`, total:r.cost, type:'trip',
-      description:`${r.miles} miles${r.roundTrip?' return':''} · ${r.litres} L · ${trip.mpg} mpg @ ${trip.pence}p/L` };
+      description:`${r.miles} miles${r.roundTrip?' return':''} · ${r.litres} L · ${trip.mpg} mpg @ ${fuelGBP()}/L` };
     const v=$('#view'); v.innerHTML=''; v.appendChild(connBanner()); v.appendChild(viewAdd(prefill)); renderTabs();
   };
   setTimeout(()=>drawMap(r),50);
@@ -1015,21 +1255,17 @@ function vehicleEditorSheet(){
     s.appendChild(el('p','desc','Stored so you don’t re-enter the MPG every trip.'));
     s.innerHTML += `
       <div class="field"><label>Name</label><input class="input" id="vName" placeholder="e.g. Owen’s Golf"></div>
-      <div style="display:flex;gap:12px">
-        <div class="field" style="flex:1"><label>MPG</label><input class="input" id="vMpg" type="number" inputmode="decimal" placeholder="45"></div>
-        <div class="field" style="flex:1"><label>Fuel p/litre</label><input class="input" id="vPence" type="number" inputmode="decimal" placeholder="145"></div>
-      </div>`;
+      <div class="field"><label>MPG <span class="hint">average miles per gallon</span></label><input class="input" id="vMpg" type="number" inputmode="decimal" placeholder="45"></div>`;
     const btn = el('button','btn btn-primary btn-block','Save vehicle');
     btn.onclick = async ()=>{
       const name=s.querySelector('#vName').value.trim();
       const mpg=Number(s.querySelector('#vMpg').value)||0;
-      const pence=Number(s.querySelector('#vPence').value)||0;
       if(!name) return toast('Give it a name','err');
       if(!(mpg>0)) return toast('Enter the MPG','err');
       btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
       try{
-        if(SCRIPT_URL){ applyData(await api('addVehicle',{name,mpg,pence})); }
-        else { state.vehicles.push({name,mpg,pence,notes:''}); }
+        if(SCRIPT_URL){ applyData(await api('addVehicle',{name,mpg})); }
+        else { state.vehicles.push({name,mpg,notes:''}); }
         trip.vehicle=name; closeSheet(); toast('Vehicle saved'); renderAll();
       }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save vehicle'; }
     };
@@ -1038,28 +1274,75 @@ function vehicleEditorSheet(){
 }
 
 /* ============================================================== *
+ *  SETTINGS
+ * ============================================================== */
+function viewSettings(){
+  const wrap = el('div');
+  wrap.appendChild(el('div','page-title','Settings'));
+  wrap.appendChild(el('div','page-sub','Shared settings that apply for everyone in the group.'));
+
+  wrap.appendChild(el('div','section-eyebrow','Fuel price'));
+  const card = el('div','card'); card.style.padding='16px';
+  card.innerHTML = `
+    <div class="field" style="margin-bottom:10px"><label>Unleaded — pence per litre</label>
+      <div class="money-input"><span class="sym" style="font-family:var(--display)">p</span>
+        <input class="input num" id="setFuel" type="number" inputmode="decimal" step="0.1" value="${fuelPence()}" style="padding-left:30px;font-size:18px;font-weight:600"></div>
+      <div class="hint" id="fuelEcho" style="margin-top:7px;font-size:12.5px;color:var(--muted)">= ${fuelGBP()} / litre</div>
+    </div>
+    <button class="btn btn-primary btn-block" id="saveFuel">Save fuel price</button>`;
+  wrap.appendChild(card);
+
+  const note = el('div','note');
+  note.innerHTML = `<span class="ni">⛽</span><span>The cost of unleaded is determined by the AA UK average and will be reviewed every 4 weeks. Changing it here applies to all future trips only — trips already logged keep their original cost.</span>`;
+  wrap.appendChild(note);
+
+  const inp = card.querySelector('#setFuel');
+  inp.addEventListener('input', ()=>{ const v=Number(inp.value)||0; card.querySelector('#fuelEcho').textContent = '= £'+(v/100).toFixed(2)+' / litre'; });
+  card.querySelector('#saveFuel').onclick = async ()=>{
+    const p = Number(inp.value)||0;
+    if(!(p>0)) return toast('Enter a price','err');
+    const btn = card.querySelector('#saveFuel'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+    try{
+      if(SCRIPT_URL){ applyData(await api('setFuelPrice',{fuelPence:p})); }
+      else { state.settings.fuelPence = p; }
+      toast('Fuel price updated'); renderAll();
+    }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save fuel price'; }
+  };
+
+  return wrap;
+}
+
+/* ============================================================== *
  *  ACTIVITY
  * ============================================================== */
-function typeIcon(x){ return x.type==='trip'?'🚗':x.type==='quick'?'⚡':'🧾'; }
+function typeIcon(x){ return x.type==='transfer'?'💸':x.type==='trip'?'🚗':x.type==='quick'?'⚡':'🧾'; }
 function viewActivity(){
   const wrap = el('div');
   wrap.appendChild(el('div','page-title','Activity'));
-  wrap.appendChild(el('div','page-sub','Every expense, newest first.'));
+  wrap.appendChild(el('div','page-sub','Every expense and payment, newest first.'));
   const list = el('div','card');
   if(!state.expenses.length){
-    list.appendChild(emptyState('🧾','No expenses yet','Add your first one from the Add tab.'));
+    list.appendChild(emptyState('🧾','Nothing logged yet','Add your first expense from the Add tab.'));
   } else {
     state.expenses.forEach(x=>{
-      const yourShare = (x.split&&x.split[state.me])||0;
       const youPaid = x.paidBy===state.me;
       const row = el('div','act-row');
-      const date = new Date(x.ts);
-      const ds = date.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+      const ds = fmtDate(x.ts);
+      let meta, right;
+      if(x.type==='transfer'){
+        const to = Object.keys(x.split||{})[0]||'';
+        const label = youPaid ? `You paid ${esc(to)}` : (to===state.me ? `${esc(x.paidBy)} paid you` : `${esc(x.paidBy)} paid ${esc(to)}`);
+        meta = `${label} · ${ds}`;
+        right = `<div class="tot num">${money(x.total)}</div><div class="yr">payment</div>`;
+      } else {
+        const yourShare = (x.split&&x.split[state.me])||0;
+        meta = `${youPaid?'You':esc(x.paidBy)} paid · ${ds}${x.receiptUrl?' · 📎':''}`;
+        right = `<div class="tot num">${money(x.total)}</div><div class="yr">${yourShare?('your share '+money(yourShare)):'not in split'}</div>`;
+      }
       row.innerHTML = `<div class="act-ic">${typeIcon(x)}</div>
         <div class="act-main"><div class="at">${esc(x.name)}</div>
-          <div class="am">${youPaid?'You':esc(x.paidBy)} paid · ${ds}${x.receiptUrl?' · 📎':''}</div></div>
-        <div class="act-right"><div class="tot num">${money(x.total)}</div>
-          <div class="yr">${yourShare?('your share '+money(yourShare)):'not in split'}</div></div>`;
+          <div class="am">${meta}</div></div>
+        <div class="act-right">${right}</div>`;
       row.onclick = ()=>expenseDetailSheet(x);
       list.appendChild(row);
     });
@@ -1069,22 +1352,38 @@ function viewActivity(){
 }
 function expenseDetailSheet(x){
   openSheet(s=>{
-    s.appendChild(el('h2',null,esc(x.name)));
+    const isT = x.type==='transfer';
     const date = new Date(x.ts).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'long'});
-    s.appendChild(el('p','desc',`${esc(x.paidBy)} paid ${money(x.total)} · ${date}`));
-    if(x.description){ const d=el('div','card'); d.style.cssText='padding:13px 15px;margin-bottom:14px;font-size:14px;color:var(--ink-soft)'; d.textContent=x.description; s.appendChild(d); }
-    s.appendChild(el('div','section-eyebrow','Split'));
-    const box = el('div','card'); box.style.padding='4px 14px';
-    Object.keys(x.split||{}).forEach(nm=>{
-      const r=el('div','split-row');
-      r.innerHTML=`${avatar(nm,'sm')}<span class="name">${esc(nm)}${nm===x.paidBy?' <span style="color:var(--faint);font-weight:400">· paid</span>':''}</span><span class="num" style="font-weight:600">${money(x.split[nm])}</span>`;
-      box.appendChild(r);
-    });
-    s.appendChild(box);
+    if(isT){
+      const to = Object.keys(x.split||{})[0]||'';
+      s.appendChild(el('h2',null,'Payment'));
+      s.appendChild(el('p','desc',date));
+      const box = el('div','card'); box.style.cssText='padding:16px;margin-bottom:4px;display:flex;align-items:center;gap:12px;justify-content:center';
+      box.innerHTML = `${avatar(x.paidBy,'md')}<div style="font-weight:600">${esc(x.paidBy)}</div>
+        <div style="color:var(--brand);font-size:20px">→</div>
+        <div style="font-weight:600">${esc(to)}</div>${avatar(to,'md')}`;
+      s.appendChild(box);
+      const amt = el('div'); amt.style.cssText='text-align:center;margin:14px 0';
+      amt.innerHTML = `<div class="num" style="font-size:32px;font-weight:700">${money(x.total)}</div>`;
+      s.appendChild(amt);
+      if(x.description){ const d=el('div','card'); d.style.cssText='padding:13px 15px;margin-bottom:8px;font-size:14px;color:var(--ink-soft)'; d.textContent=x.description; s.appendChild(d); }
+    } else {
+      s.appendChild(el('h2',null,esc(x.name)));
+      s.appendChild(el('p','desc',`${esc(x.paidBy)} paid ${money(x.total)} · ${date}`));
+      if(x.description){ const d=el('div','card'); d.style.cssText='padding:13px 15px;margin-bottom:14px;font-size:14px;color:var(--ink-soft)'; d.textContent=x.description; s.appendChild(d); }
+      s.appendChild(el('div','section-eyebrow','Split'));
+      const box = el('div','card'); box.style.padding='4px 14px';
+      Object.keys(x.split||{}).forEach(nm=>{
+        const r=el('div','split-row');
+        r.innerHTML=`${avatar(nm,'sm')}<span class="name">${esc(nm)}${nm===x.paidBy?' <span style="color:var(--faint);font-weight:400">· paid</span>':''}</span><span class="num" style="font-weight:600">${money(x.split[nm])}</span>`;
+        box.appendChild(r);
+      });
+      s.appendChild(box);
+    }
     if(x.receiptUrl){
       const a=el('a','btn btn-ghost btn-block','📎 View receipt'); a.href=x.receiptUrl; a.target='_blank'; a.style.marginTop='12px'; s.appendChild(a);
     }
-    const del = el('button','btn btn-block','Delete expense');
+    const del = el('button','btn btn-block', isT?'Delete payment':'Delete expense');
     del.style.cssText='margin-top:12px;color:var(--neg);background:var(--neg-soft)';
     del.onclick = async ()=>{
       del.disabled=true; del.innerHTML='<span class="spin"></span>';
@@ -1092,7 +1391,7 @@ function expenseDetailSheet(x){
         if(SCRIPT_URL){ applyData(await api('deleteExpense',{id:x.id})); }
         else { state.expenses=state.expenses.filter(e=>e.id!==x.id); }
         closeSheet(); toast('Deleted'); renderAll();
-      }catch(e){ toast(e.message,'err'); del.disabled=false; del.innerHTML='Delete expense'; }
+      }catch(e){ toast(e.message,'err'); del.disabled=false; del.innerHTML=isT?'Delete payment':'Delete expense'; }
     };
     s.appendChild(del);
   });
