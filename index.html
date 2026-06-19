@@ -55,6 +55,12 @@
   .icon-btn.active{color:var(--brand); border-color:var(--brand)}
   .note{display:flex; gap:9px; align-items:flex-start; background:#0E7C6608; border:1px solid #0E7C6622; border-radius:var(--r-sm); padding:11px 13px; font-size:12.5px; color:var(--ink-soft); line-height:1.5; margin-top:14px}
   .note .ni{flex:none; font-size:14px; line-height:1.3}
+  .tag-pill{display:inline-flex; align-items:center; gap:5px; background:#8B5CF614; color:#6D28D9; border:1px solid #8B5CF633; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:600; vertical-align:middle}
+  .tag-pill .x{font-size:11px; opacity:.7}
+  .chip-scroll{display:flex; gap:8px; overflow-x:auto; padding:2px 0 10px; margin:0 -18px 4px; padding-left:18px; padding-right:18px; -webkit-overflow-scrolling:touch; scrollbar-width:none}
+  .chip-scroll::-webkit-scrollbar{display:none}
+  .fchip{flex:none; padding:7px 14px; border-radius:999px; border:1px solid var(--line); background:var(--card); font-size:13px; font-weight:600; color:var(--muted); white-space:nowrap; box-shadow:var(--shadow)}
+  .fchip.on{background:var(--ink); color:#fff; border-color:var(--ink)}
 
   main{flex:1; padding:18px 18px 110px}
 
@@ -305,13 +311,24 @@ const SHARED_SECRET = "split-7f3a9c2e8b1d4056";
 /* ---------------- State ---------------- */
 const PALETTE = ['#E5564B','#1DAA6B','#3B82F6','#F59E0B','#8B5CF6','#EC4899','#0EA5E9','#14B8A6','#F97316','#6366F1'];
 const SEED_PEOPLE = ['Owen','Alex','Conor','Ben','Alice','Lucy'];
+const SEED_PLACES = [
+  {label:'Owen\u2019s Home', address:'Little Lane, WN3 6PX'},
+  {label:'Alice\u2019s Home', address:'Foundry Lane, Wigan'},
+  {label:'Conor\u2019s Home', address:'Pepper Lane Chippy, Standish'},
+  {label:'Lucy\u2019s Home', address:'Glebe Road, Standish'},
+  {label:'Kunky House', address:'Dangerous Corner, Leigh'}
+];
 const state = {
   people: SEED_PEOPLE.map((n,i)=>({name:n,color:PALETTE[i%PALETTE.length]})),
-  vehicles: [], quick: [], quickTrips: [], expenses: [], settings: { fuelPence: 156 },
-  me: null, tab: 'balances', connected: false, loading: false
+  vehicles: [], quick: [], quickTrips: [], places: SEED_PLACES.slice(), expenses: [], settings: { fuelPence: 156 },
+  me: null, tab: 'balances', tagFilter: null, connected: false, loading: false
 };
 const fuelPence = () => (state.settings && state.settings.fuelPence) || 156;
 const fuelGBP = () => '£'+ (fuelPence()/100).toFixed(2);
+const placeResolve = txt => { const p = state.places.find(x=>x.label.toLowerCase()===String(txt||'').trim().toLowerCase()); return p ? p.address : txt; };
+const allTags = () => [...new Set(state.expenses.map(x=>x.tag).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+const placeDatalist = id => `<datalist id="${id}">${state.places.map(p=>`<option value="${esc(p.label)}"></option>`).join('')}</datalist>`;
+const tagDatalist = id => `<datalist id="${id}">${allTags().map(t=>`<option value="${esc(t)}"></option>`).join('')}</datalist>`;
 
 /* ---------------- Helpers ---------------- */
 const $ = s => document.querySelector(s);
@@ -345,6 +362,7 @@ function applyData(d){
   state.vehicles = d.vehicles || [];
   state.quick = d.quick || [];
   state.quickTrips = d.quickTrips || [];
+  if(d.places) state.places = d.places;
   if(d.settings) state.settings = d.settings;
   state.expenses = (d.expenses||[]).sort((a,b)=>b.ts-a.ts);
   if(state.me && !state.people.some(p=>p.name===state.me)) state.me = null;
@@ -734,6 +752,9 @@ function viewAdd(prefill){
       <input class="input" id="exDate" type="date" value="${(prefill&&prefill.date)||todayISO()}" max="${todayISO()}"></div>
     <div class="field"><label>Description <span class="hint">optional</span></label>
       <textarea class="input" id="exDesc" placeholder="Anything worth noting">${esc(prefill&&prefill.description||'')}</textarea></div>
+    <div class="field"><label>Tag <span class="hint">optional — group trips, holidays, nights out…</span></label>
+      <input class="input" id="exTag" list="exTagList" placeholder="e.g. Lake District weekend" autocomplete="off" value="${esc(prefill&&prefill.tag||'')}">
+      ${tagDatalist('exTagList')}</div>
     <div class="field"><label>Paid by</label>
       <div class="people-grid" id="paidByGrid"></div></div>
     <div class="field"><label>Split between</label>
@@ -886,9 +907,10 @@ function viewAdd(prefill){
     const total = Number(form.querySelector('#exTotal').value)||0;
     const desc = form.querySelector('#exDesc').value.trim();
     const ts = tsFromISO(form.querySelector('#exDate').value);
+    const tag = form.querySelector('#exTag').value.trim();
     const {split, ok} = currentSplit();
     if(!ok || !name) return;
-    const payload = { name, total, description:desc, paidBy:fs.paidBy, split, type:(prefill&&prefill.type)||'expense', ts };
+    const payload = { name, total, description:desc, paidBy:fs.paidBy, split, type:(prefill&&prefill.type)||'expense', ts, tag };
     if(draft.receipt) payload.receipt = { data:draft.receipt.data, name:draft.receipt.name, mimeType:draft.receipt.mimeType };
     const btn = form.querySelector('#saveExpense'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
     try{
@@ -960,13 +982,13 @@ async function logQuickTrip(q){
   if(!SCRIPT_URL) return toast('Connect your sheet to calculate trips.','err');
   toast('Mapping route…');
   let r;
-  try{ r = await api('calcTrip',{origin:q.origin, destination:q.destination, mpg:q.mpg, roundTrip:q.roundTrip}); }
+  try{ r = await api('calcTrip',{origin:placeResolve(q.origin), destination:placeResolve(q.destination), mpg:q.mpg, roundTrip:q.roundTrip}); }
   catch(e){ return toast(e.message,'err'); }
   const names = (q.split==='all'||!Array.isArray(q.split)) ? state.people.map(p=>p.name) : q.split.filter(n=>state.people.some(p=>p.name===n));
-  const fs = { paidBy: state.me };
+  const fs = { paidBy: state.me, tag:'' };
   openSheet(s=>{
     s.appendChild(el('h2',null,`${q.emoji||'🚗'} ${esc(q.label)}`));
-    s.appendChild(el('p','desc',`${esc(r.origin)} → ${esc(r.destination)}`));
+    s.appendChild(el('p','desc',`${esc(q.origin)} → ${esc(q.destination)}`));
     const res = el('div','trip-result'); res.style.marginTop='0';
     res.innerHTML = `<div class="cell"><div class="cv num">${r.miles}</div><div class="cl">miles${r.roundTrip?' (return)':''}</div></div>
       <div class="cell"><div class="cv num">${r.litres}</div><div class="cl">litres</div></div>
@@ -979,6 +1001,9 @@ async function logQuickTrip(q){
         b.innerHTML=`${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
         b.onclick=()=>{fs.paidBy=p.name; draw();}; g.appendChild(b); }); };
     draw();
+    const tgF = el('div','field'); tgF.innerHTML=`<label>Tag <span class="hint">optional</span></label><input class="input" id="qtTag" list="qtTagList" placeholder="e.g. Lake District weekend" autocomplete="off">${tagDatalist('qtTagList')}`;
+    s.appendChild(tgF);
+    tgF.querySelector('#qtTag').oninput = e=>{ fs.tag=e.target.value; };
     const dF = el('div','field'); dF.innerHTML=`<label>Date</label><input class="input" id="qtDate" type="date" value="${todayISO()}" max="${todayISO()}">`;
     s.appendChild(dF);
     const info = el('div','split-summary good');
@@ -989,7 +1014,7 @@ async function logQuickTrip(q){
     btn.onclick = async ()=>{
       const cents=Math.round(r.cost*100), n=names.length||1, base=Math.floor(cents/n); let rem=cents-base*n;
       const split={}; names.forEach((nm,i)=>split[nm]=(base+(i<rem?1:0))/100);
-      const payload={ name:`Trip: ${r.origin} → ${r.destination}`, total:r.cost, paidBy:fs.paidBy, split, type:'trip',
+      const payload={ name:`Trip: ${q.origin} → ${q.destination}`, total:r.cost, paidBy:fs.paidBy, split, type:'trip', tag:(fs.tag||'').trim(),
         description:`${r.miles} miles${r.roundTrip?' return':''} · ${r.litres} L · ${q.mpg} mpg @ ${fuelGBP()}/L`,
         ts: tsFromISO(s.querySelector('#qtDate').value) };
       btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
@@ -1008,8 +1033,9 @@ function quickTripEditorSheet(){
         <div class="field" style="flex:none;width:80px"><label>Emoji</label><input class="input" id="qtEmoji" maxlength="2" placeholder="🚗" style="text-align:center;font-size:22px"></div>
         <div class="field" style="flex:1"><label>Label</label><input class="input" id="qtLabel" placeholder="e.g. Footy training"></div>
       </div>
-      <div class="field"><label>Start</label><input class="input" id="qtFrom" placeholder="e.g. Tyldesley"></div>
-      <div class="field"><label>Destination</label><input class="input" id="qtTo" placeholder="e.g. Leigh Sports Village"></div>
+      <div class="field"><label>Start</label><input class="input" id="qtFrom" list="qtPlaceList" autocomplete="off" placeholder="Type or pick a saved place"></div>
+      <div class="field"><label>Destination</label><input class="input" id="qtTo" list="qtPlaceList" autocomplete="off" placeholder="Type or pick a saved place"></div>
+      ${placeDatalist('qtPlaceList')}
       <div class="field"><label>Vehicle</label><select class="input" id="qtVeh"></select></div>
       <div class="field"><label>MPG</label><input class="input" id="qtMpg" type="number" inputmode="decimal" placeholder="e.g. 45"></div>
       <div class="field"><label style="display:flex;align-items:center;gap:9px;cursor:pointer">
@@ -1150,6 +1176,7 @@ function viewTrip(){
     <div class="field"><label>MPG</label><input class="input" id="tMpg" type="number" inputmode="decimal" placeholder="e.g. 45" value="${esc(trip.mpg)}"></div>
     <button class="btn btn-primary btn-block" id="tCalc">Calculate fuel cost</button>
     <div id="tOut"></div>
+    ${placeDatalist('placeList')}
   `;
   wrap.appendChild(form);
   form.appendChild(aaNote());
@@ -1159,10 +1186,10 @@ function viewTrip(){
     const c = form.querySelector('#stopsWrap'); c.innerHTML='';
     trip.stops.forEach((val,i)=>{
       const last = i===trip.stops.length-1;
-      const ph = i===0 ? 'Start — e.g. Tyldesley' : last ? 'Destination' : 'Stop '+i;
+      const ph = i===0 ? 'Start — type or pick a saved place' : last ? 'Destination' : 'Stop '+i;
       const row = el('div'); row.style.cssText='display:flex;gap:10px;align-items:center;margin-bottom:8px';
       row.innerHTML = `<span class="stop-dot ${i===0?'start':last?'end':'mid'}"></span>
-        <input class="input stop-input" placeholder="${ph}" value="${esc(val)}" style="flex:1">
+        <input class="input stop-input" list="placeList" placeholder="${ph}" value="${esc(val)}" autocomplete="off" style="flex:1">
         ${trip.stops.length>2?`<button class="stop-rm" data-i="${i}" aria-label="Remove stop">✕</button>`:''}`;
       c.appendChild(row);
     });
@@ -1185,14 +1212,14 @@ function viewTrip(){
   form.querySelector('#tCalc').onclick = async ()=>{
     syncStops();
     trip.mpg = form.querySelector('#tMpg').value;
-    const stops = trip.stops.map(s=>s.trim()).filter(Boolean);
-    if(stops.length<2) return toast('Add at least a start and a destination','err');
+    const labels = trip.stops.map(s=>s.trim()).filter(Boolean);
+    if(labels.length<2) return toast('Add at least a start and a destination','err');
     if(!(Number(trip.mpg)>0)) return toast('Enter the MPG','err');
     if(!SCRIPT_URL) return toast('Connect your sheet to use the map — it does the distance maths.','err');
     const btn = form.querySelector('#tCalc'); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Mapping route…';
     try{
-      const r = await api('calcTrip',{stops, mpg:Number(trip.mpg)});
-      trip.result = r; renderTripOut(form.querySelector('#tOut'));
+      const r = await api('calcTrip',{stops: labels.map(placeResolve), mpg:Number(trip.mpg)});
+      trip.display = labels; trip.result = r; renderTripOut(form.querySelector('#tOut'));
     }catch(e){ toast(e.message,'err'); }
     finally{ btn.disabled=false; btn.innerHTML='Calculate fuel cost'; }
   };
@@ -1248,8 +1275,9 @@ function renderTripOut(box){
   const sp = {
     driver: state.people.some(p=>p.name===state.me)?state.me:(state.people[0]||{}).name,
     parts: new Set(state.people.map(p=>p.name)),
-    exit: {}, date: todayISO()
+    exit: {}, date: todayISO(), tag: ''
   };
+  const labels = (trip.display && trip.display.length===r.stops.length) ? trip.display : r.stops;
   state.people.forEach(p=> sp.exit[p.name]=r.legs.length);
 
   box.innerHTML = `
@@ -1265,9 +1293,9 @@ function renderTripOut(box){
     <div id="splitPanel"></div>`;
 
   const lb = box.querySelector('#legBox');
-  r.legs.forEach(l=>{
+  r.legs.forEach((l,idx)=>{
     const row = el('div','split-row');
-    row.innerHTML = `<span class="name" style="flex:1;font-size:13.5px">${esc(l.from)} → ${esc(l.to)}</span>
+    row.innerHTML = `<span class="name" style="flex:1;font-size:13.5px">${esc(labels[idx])} → ${esc(labels[idx+1])}</span>
       <span class="num" style="color:var(--faint);font-size:12.5px;margin-right:12px">${l.miles} mi</span>
       <span class="num" style="font-weight:600">${money(l.cost)}</span>`;
     lb.appendChild(row);
@@ -1293,7 +1321,7 @@ function renderTripOut(box){
         const row = el('div','split-row');
         row.innerHTML = `${avatar(nm,'sm')}<span class="name">${esc(nm)}</span>`;
         const selx = el('select','input'); selx.style.cssText='width:auto;max-width:56%;padding:8px 10px;font-size:13px';
-        let opts=''; for(let i=1;i<r.stops.length;i++){ opts+=`<option value="${i}" ${(isDriver?r.stops.length-1:sp.exit[nm])===i?'selected':''}>${esc(r.stops[i])}</option>`; }
+        let opts=''; for(let i=1;i<r.stops.length;i++){ opts+=`<option value="${i}" ${(isDriver?r.stops.length-1:sp.exit[nm])===i?'selected':''}>${esc(labels[i])}</option>`; }
         selx.innerHTML=opts; selx.disabled=isDriver;
         selx.onchange=()=>{ sp.exit[nm]=Number(selx.value); renderPanel(); };
         row.appendChild(selx);
@@ -1306,11 +1334,16 @@ function renderTripOut(box){
     [...sp.parts].forEach(nm=>{
       const isDriver = nm===sp.driver;
       const row = el('div','split-row');
-      const out = sp.exit[nm] < r.stops.length-1 ? ` <span style="color:var(--faint);font-weight:400">· out at ${esc(r.stops[sp.exit[nm]])}</span>` : '';
+      const out = sp.exit[nm] < r.stops.length-1 ? ` <span style="color:var(--faint);font-weight:400">· out at ${esc(labels[sp.exit[nm]])}</span>` : '';
       row.innerHTML = `${avatar(nm,'sm')}<span class="name">${esc(nm)}${isDriver?' <span style="color:var(--faint);font-weight:400">· paid</span>':out}</span><span class="num" style="font-weight:600">${money(sh.shares[nm]||0)}</span>`;
       card.appendChild(row);
     });
     panel.appendChild(card);
+
+    const tg = el('div','field'); tg.style.marginTop='12px';
+    tg.innerHTML = `<label>Tag <span class="hint">optional</span></label><input class="input" id="trTag" list="trTagList" placeholder="e.g. Lake District weekend" autocomplete="off" value="${esc(sp.tag)}">${tagDatalist('trTagList')}`;
+    panel.appendChild(tg);
+    tg.querySelector('#trTag').oninput = e=>{ sp.tag=e.target.value; };
 
     const dt = el('div','field'); dt.style.marginTop='12px';
     dt.innerHTML = `<label>Date</label><input class="input" id="trDate" type="date" value="${sp.date}" max="${todayISO()}">`;
@@ -1339,12 +1372,13 @@ async function logTrip(r, sp, btn){
   if(!sh.ok) return toast('Every leg needs at least one person in the car','err');
   const split={}; Object.keys(sh.shares).forEach(p=>{ if(sh.shares[p]>0) split[p]=sh.shares[p]; });
   if(!Object.keys(split).length) return toast('Nobody is set to pay for this trip','err');
+  const labels = (trip.display && trip.display.length===r.stops.length) ? trip.display : r.stops;
   const exits = [...sp.parts].filter(p=>p!==sp.driver && sp.exit[p] < r.stops.length-1)
-    .map(p=>`${p} out at ${r.stops[sp.exit[p]]}`).join(', ');
+    .map(p=>`${p} out at ${labels[sp.exit[p]]}`).join(', ');
   const payload = {
-    name:`Trip: ${r.stops[0]} → ${r.stops[r.stops.length-1]}`,
-    total:r.cost, paidBy:sp.driver, split, type:'trip',
-    description:`${r.stops.join(' → ')} · ${r.miles} mi · ${r.litres} L · ${trip.mpg} mpg @ ${fuelGBP()}/L${exits?(' · '+exits):''}`,
+    name:`Trip: ${labels[0]} → ${labels[labels.length-1]}`,
+    total:r.cost, paidBy:sp.driver, split, type:'trip', tag:(sp.tag||'').trim(),
+    description:`${labels.join(' → ')} · ${r.miles} mi · ${r.litres} L · ${trip.mpg} mpg @ ${fuelGBP()}/L${exits?(' · '+exits):''}`,
     ts: tsFromISO(sp.date)
   };
   btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
@@ -1443,25 +1477,92 @@ function viewSettings(){
     }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save fuel price'; }
   };
 
+  const eb = el('div','section-eyebrow','Saved places'); eb.style.marginTop='24px';
+  wrap.appendChild(eb);
+  wrap.appendChild(el('div','page-sub','Quick-pick destinations when planning a trip.'));
+  const pc = el('div','card'); pc.style.padding='4px 16px';
+  if(!state.places.length){
+    pc.appendChild(emptyState('📍','No places yet','Add the spots you drive to often.'));
+  } else {
+    state.places.forEach(p=>{
+      const r = el('div','veh-row');
+      r.innerHTML = `<div class="act-ic">📍</div><div style="flex:1"><div class="vn">${esc(p.label)}</div>
+        <div class="vm">${esc(p.address)}</div></div>
+        <button class="btn btn-ghost btn-sm pdel">Remove</button>`;
+      r.querySelector('.pdel').onclick = async ()=>{
+        if(SCRIPT_URL){ try{ applyData(await api('deletePlace',{label:p.label})); toast('Removed'); }catch(e){ toast(e.message,'err'); } }
+        else { state.places=state.places.filter(x=>x!==p); }
+        renderAll();
+      };
+      pc.appendChild(r);
+    });
+  }
+  wrap.appendChild(pc);
+  const addP = el('button','btn btn-ghost btn-block','+ Add a place'); addP.style.marginTop='12px';
+  addP.onclick = ()=>placeEditorSheet();
+  wrap.appendChild(addP);
+
   return wrap;
 }
 
-/* ============================================================== *
- *  ACTIVITY
- * ============================================================== */
+function placeEditorSheet(){
+  openSheet(s=>{
+    s.appendChild(el('h2',null,'Add a place'));
+    s.appendChild(el('p','desc','Give it a friendly name and the address used for directions.'));
+    s.innerHTML += `
+      <div class="field"><label>Name</label><input class="input" id="plLabel" placeholder="e.g. Kunky House"></div>
+      <div class="field"><label>Address</label><input class="input" id="plAddr" placeholder="e.g. Dangerous Corner, Leigh"></div>`;
+    const btn = el('button','btn btn-primary btn-block','Save place');
+    btn.onclick = async ()=>{
+      const label=s.querySelector('#plLabel').value.trim();
+      const address=s.querySelector('#plAddr').value.trim();
+      if(!label) return toast('Give it a name','err');
+      if(!address) return toast('Enter the address','err');
+      btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+      try{
+        if(SCRIPT_URL){ applyData(await api('addPlace',{label,address})); }
+        else { state.places.push({label,address}); }
+        closeSheet(); toast('Place saved'); renderAll();
+      }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save place'; }
+    };
+    s.appendChild(btn);
+  });
+}
 function typeIcon(x){ return x.type==='transfer'?'💸':x.type==='trip'?'🚗':x.type==='quick'?'⚡':'🧾'; }
 function viewActivity(){
   const wrap = el('div');
   wrap.appendChild(el('div','page-title','Activity'));
   wrap.appendChild(el('div','page-sub','Every expense and payment, newest first.'));
+
+  const tags = allTags();
+  if(state.tagFilter && !tags.includes(state.tagFilter)) state.tagFilter=null;
+  if(tags.length){
+    const scroller = el('div','chip-scroll');
+    const mk = (label,val)=>{ const c=el('button','fchip'+((state.tagFilter===val)?' on':'')); c.textContent=label; c.onclick=()=>{ state.tagFilter=val; renderAll(); }; return c; };
+    scroller.appendChild(mk('All', null));
+    tags.forEach(t=> scroller.appendChild(mk('# '+t, t)));
+    wrap.appendChild(scroller);
+  }
+
+  const shown = state.tagFilter ? state.expenses.filter(x=>x.tag===state.tagFilter) : state.expenses;
+
+  if(state.tagFilter){
+    const total = shown.reduce((s,x)=> s + (x.type==='transfer'?0:x.total), 0);
+    const mine = shown.reduce((s,x)=> s + ((x.type!=='transfer' && x.split && x.split[state.me])||0), 0);
+    const sum = el('div','overall pos'); sum.style.marginBottom='14px';
+    sum.innerHTML = `<div class="lbl"># ${esc(state.tagFilter)}</div><div class="big num">${money(total)}</div><div class="sub">${shown.length} item${shown.length===1?'':'s'} · your share ${money(mine)}</div>`;
+    wrap.appendChild(sum);
+  }
+
   const list = el('div','card');
-  if(!state.expenses.length){
-    list.appendChild(emptyState('🧾','Nothing logged yet','Add your first expense from the Add tab.'));
+  if(!shown.length){
+    list.appendChild(emptyState('🧾', state.tagFilter?'Nothing tagged here':'Nothing logged yet', state.tagFilter?'No items carry this tag yet.':'Add your first expense from the Add tab.'));
   } else {
-    state.expenses.forEach(x=>{
+    shown.forEach(x=>{
       const youPaid = x.paidBy===state.me;
       const row = el('div','act-row');
       const ds = fmtDate(x.ts);
+      const tagPill = (x.tag && !state.tagFilter) ? ` <span class="tag-pill">#${esc(x.tag)}</span>` : '';
       let meta, right;
       if(x.type==='transfer'){
         const to = Object.keys(x.split||{})[0]||'';
@@ -1474,7 +1575,7 @@ function viewActivity(){
         right = `<div class="tot num">${money(x.total)}</div><div class="yr">${yourShare?('your share '+money(yourShare)):'not in split'}</div>`;
       }
       row.innerHTML = `<div class="act-ic">${typeIcon(x)}</div>
-        <div class="act-main"><div class="at">${esc(x.name)}</div>
+        <div class="act-main"><div class="at">${esc(x.name)}${tagPill}</div>
           <div class="am">${meta}</div></div>
         <div class="act-right">${right}</div>`;
       row.onclick = ()=>expenseDetailSheet(x);
@@ -1517,6 +1618,22 @@ function expenseDetailSheet(x){
     if(x.receiptUrl){
       const a=el('a','btn btn-ghost btn-block','📎 View receipt'); a.href=x.receiptUrl; a.target='_blank'; a.style.marginTop='12px'; s.appendChild(a);
     }
+
+    const tagF = el('div','field'); tagF.style.marginTop='14px';
+    tagF.innerHTML = `<label>Tag <span class="hint">group with other items</span></label>
+      <div style="display:flex;gap:8px"><input class="input" id="dTag" list="dTagList" autocomplete="off" placeholder="e.g. Lake District weekend" value="${esc(x.tag||'')}" style="flex:1">
+      <button class="btn btn-primary btn-sm" id="dTagSave">Save</button></div>${tagDatalist('dTagList')}`;
+    s.appendChild(tagF);
+    tagF.querySelector('#dTagSave').onclick = async ()=>{
+      const tag = tagF.querySelector('#dTag').value.trim();
+      const b = tagF.querySelector('#dTagSave'); b.disabled=true; b.innerHTML='<span class="spin"></span>';
+      try{
+        if(SCRIPT_URL){ applyData(await api('setExpenseTag',{id:x.id, tag})); }
+        else { const e=state.expenses.find(e=>e.id===x.id); if(e) e.tag=tag; }
+        x.tag=tag; closeSheet(); toast(tag?'Tagged':'Tag removed'); renderAll();
+      }catch(e){ toast(e.message,'err'); b.disabled=false; b.textContent='Save'; }
+    };
+
     const del = el('button','btn btn-block', isT?'Delete payment':'Delete expense');
     del.style.cssText='margin-top:12px;color:var(--neg);background:var(--neg-soft)';
     del.onclick = async ()=>{
