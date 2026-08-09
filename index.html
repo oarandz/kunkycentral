@@ -132,6 +132,39 @@
   .split-row:last-child{border-bottom:none}
   .split-row .name{flex:1; font-weight:500; font-size:14.5px}
   .split-row .amt{width:104px}
+  .stepper{display:inline-flex; align-items:center; gap:2px; background:var(--canvas); border:1px solid var(--line); border-radius:9px; padding:2px; margin-right:10px}
+  .stepper button{width:26px; height:26px; border-radius:7px; font-size:16px; font-weight:600; color:var(--ink-soft); display:grid; place-items:center}
+  .stepper button:active{background:#fff}
+  .stepper .st-v{min-width:22px; text-align:center; font-weight:600; font-family:var(--display); font-size:14px}
+  .rest-btn{font-size:11px; font-weight:600; color:var(--muted); background:var(--canvas); border:1px solid var(--line); border-radius:7px; padding:5px 9px; margin-right:10px}
+  .rest-btn.on{background:#0E7C660d; border-color:var(--brand); color:var(--brand)}
+  .seg-4 button{font-size:12.5px; padding:9px 4px}
+  .pct-row{padding:12px 2px; border-bottom:1px solid var(--line-soft)}
+  .pct-row:last-child{border-bottom:none}
+  .pct-head{display:flex; align-items:center; gap:9px; margin-bottom:9px}
+  .pct-lock{width:28px; height:28px; border-radius:8px; background:var(--canvas); border:1px solid var(--line); display:grid; place-items:center; font-size:12px; flex:none}
+  .pct-lock.on{background:#0E7C660d; border-color:var(--brand)}
+  .pct-mini{display:inline-flex; align-items:center; gap:3px; font-size:12px; color:var(--muted); font-weight:600; flex:none}
+  .numbox{display:inline-flex; align-items:stretch; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#fff; height:32px}
+  .numbox:focus-within{border-color:var(--brand); box-shadow:0 0 0 3px #0E7C661f}
+  .pct-in{width:38px; padding:0 6px; border:none; text-align:right; font-family:var(--display); font-weight:600; font-size:13px; background:transparent; color:var(--ink)}
+  .numbox.amt .pct-in{width:48px}
+  .pct-in:focus{outline:none}
+  .pct-in:disabled{color:var(--faint)}
+  .pct-in::-webkit-outer-spin-button, .pct-in::-webkit-inner-spin-button{-webkit-appearance:none; margin:0}
+  .pct-in[type=number]{-moz-appearance:textfield; appearance:textfield}
+  .nstep{display:flex; flex-direction:column; border-left:1px solid var(--line); flex:none}
+  .nstep button{width:18px; flex:1; display:grid; place-items:center; font-size:7px; color:var(--muted); background:var(--canvas); line-height:1; padding:0}
+  .nstep button:first-child{border-bottom:1px solid var(--line)}
+  .nstep button:active{background:var(--line); color:var(--ink)}
+  .nstep button:disabled{opacity:.4}
+  .numbox.amt .nstep{opacity:1}
+  .pct-row.locked .name{color:var(--muted)}
+  .pct-row.locked .numbox{background:var(--canvas)}
+  .pct-slider{-webkit-appearance:none; appearance:none; width:100%; height:6px; border-radius:99px; background:var(--line); outline:none; cursor:pointer}
+  .pct-slider:disabled{opacity:.5; cursor:not-allowed}
+  .pct-slider::-webkit-slider-thumb{-webkit-appearance:none; appearance:none; width:20px; height:20px; border-radius:50%; background:var(--brand); box-shadow:0 1px 4px rgba(0,0,0,.28); cursor:pointer}
+  .pct-slider::-moz-range-thumb{width:20px; height:20px; border:none; border-radius:50%; background:var(--brand); cursor:pointer}
   .split-summary{display:flex; justify-content:space-between; align-items:baseline; padding:12px 14px; border-radius:var(--r-sm);
     background:var(--canvas); font-size:13.5px; margin-top:8px}
   .split-summary.bad{background:var(--neg-soft); color:#A8392F}
@@ -760,9 +793,11 @@ function viewAdd(prefill){
     <div class="field"><label>Split between</label>
       <div class="people-grid" id="splitGrid"></div></div>
     <div class="field"><label>How to split</label>
-      <div class="seg" id="splitMode">
-        <button data-m="equal" class="active">Split equally</button>
-        <button data-m="exact">Exact amounts</button>
+      <div class="seg seg-4" id="splitMode">
+        <button data-m="equal" class="active">Equal</button>
+        <button data-m="shares">Shares</button>
+        <button data-m="exact">Exact</button>
+        <button data-m="percent">Percent</button>
       </div>
       <div id="splitDetail" style="margin-top:12px"></div></div>
     <div class="field"><label>Receipt <span class="hint">optional</span></label>
@@ -781,7 +816,7 @@ function viewAdd(prefill){
     paidBy: prefill&&prefill.paidBy || state.me,
     selected: new Set(prefill&&prefill.split ? Object.keys(prefill.split) : state.people.map(p=>p.name)),
     mode:'equal',
-    exact:{}
+    shares:{}, exact:{}, remainder:null, pct:{}, locked:{}
   };
 
   function drawPaidBy(){
@@ -810,68 +845,202 @@ function viewAdd(prefill){
       g.appendChild(b);
     });
   }
+  function initPct(){
+    const names=[...fs.selected], n=names.length||1;
+    const out={}; names.forEach(nm=> out[nm]=100/n); fs.pct=out; fs.locked={};
+  }
+  function ensurePct(){
+    const names=[...fs.selected];
+    const ok = Object.keys(fs.pct).length===names.length && names.every(n=>fs.pct[n]!=null);
+    if(!ok) initPct();
+  }
+  function rebalancePct(P, v){
+    const names=[...fs.selected];
+    const lockedSum = names.filter(n=>n!==P && fs.locked[n]).reduce((s,n)=>s+(fs.pct[n]||0),0);
+    const available = Math.max(0, 100 - lockedSum);
+    v = Math.max(0, Math.min(available, v));
+    const unlocked = names.filter(n=>n!==P && !fs.locked[n]);
+    fs.pct[P]=v;
+    if(!unlocked.length){ fs.pct[P]=available; return; }
+    // split what's left evenly across the other unlocked people (fractional, so amounts stay equal to the penny)
+    const each = (available - v)/unlocked.length;
+    unlocked.forEach(o=> fs.pct[o]=each);
+  }
+  function pctAmounts(total){
+    const names=[...fs.selected], cents=Math.round(total*100);
+    const raw=names.map(nm=> cents*(fs.pct[nm]||0)/100), cc=raw.map(x=>Math.floor(x));
+    const order=names.map((nm,i)=>({i,f:raw[i]-cc[i]})).sort((a,b)=>b.f-a.f);
+    let rem=cents-cc.reduce((a,b)=>a+b,0), k=0;
+    while(rem>0){ cc[order[k%order.length].i]+=1; rem--; k++; }
+    while(rem<0){ const idx=order[order.length-1-(k%order.length)].i; if(cc[idx]>0){cc[idx]-=1; rem++;} k++; }
+    const out={}; names.forEach((nm,i)=>out[nm]=cc[i]/100); return out;
+  }
   function currentSplit(){
     const names = [...fs.selected];
     const total = Number(form.querySelector('#exTotal').value)||0;
+    const cents = Math.round(total*100);
     if(fs.mode==='equal'){
-      const cents = Math.round(total*100), n=names.length||1;
-      const base = Math.floor(cents/n); let rem = cents-base*n;
-      const out={}; names.forEach((nm,i)=>{ out[nm]=(base+(i<rem?1:0))/100; });
+      const n=names.length||1, base=Math.floor(cents/n); let rem=cents-base*n;
+      const out={}; names.forEach((nm,i)=>out[nm]=(base+(i<rem?1:0))/100);
       return {split:out, total, sum:total, ok:names.length>0&&total>0};
-    } else {
-      const out={}; let sum=0;
-      names.forEach(nm=>{ const v=Number(fs.exact[nm])||0; out[nm]=v; sum+=v; });
-      return {split:out, total, sum, ok:names.length>0&&total>0&&Math.abs(sum-total)<0.011};
     }
+    if(fs.mode==='shares'){
+      const w = names.map(nm=> Math.max(0, parseInt(fs.shares[nm]!=null?fs.shares[nm]:1,10)||0));
+      const totalW = w.reduce((a,b)=>a+b,0);
+      const out={};
+      if(totalW<=0){ names.forEach(nm=>out[nm]=0); return {split:out, total, sum:0, ok:false, totalW:0}; }
+      const raw = names.map((nm,i)=> cents*w[i]/totalW);
+      const cc = raw.map(x=>Math.floor(x));
+      let rem = cents - cc.reduce((a,b)=>a+b,0);
+      const order = names.map((nm,i)=>({i, f: raw[i]-cc[i]})).sort((a,b)=>b.f-a.f);
+      for(let k=0;k<rem;k++){ cc[order[k%order.length].i]+=1; }
+      names.forEach((nm,i)=> out[nm]=cc[i]/100);
+      return {split:out, total, sum:total, ok:names.length>0&&total>0, totalW};
+    }
+    if(fs.mode==='percent'){
+      ensurePct();
+      return {split:pctAmounts(total), total, sum:total, ok:names.length>0&&total>0};
+    }
+    // exact (optionally one person covers the rest)
+    const out={}; let fixedSum=0;
+    const rem = (fs.remainder && fs.selected.has(fs.remainder)) ? fs.remainder : null;
+    names.forEach(nm=>{ if(nm===rem) return; const v=Number(fs.exact[nm])||0; out[nm]=v; fixedSum+=v; });
+    if(rem){
+      const remAmt = Math.round((total-fixedSum)*100)/100;
+      out[rem]=remAmt;
+      return {split:out, total, sum:total, fixedSum, remAmt, remainder:rem, ok:names.length>0&&total>0&&remAmt>=-0.001};
+    }
+    let sum=0; names.forEach(nm=> sum+=(out[nm]||0));
+    return {split:out, total, sum, ok:names.length>0&&total>0&&Math.abs(sum-total)<0.011};
   }
   function drawDetail(){
     const d = form.querySelector('#splitDetail'); d.innerHTML='';
     const names = [...fs.selected];
     if(!names.length){ d.innerHTML='<div class="split-summary bad">Pick at least one person to split between.</div>'; updateSave(); return; }
-    const {split,total,sum} = currentSplit();
+    const cs = currentSplit();
+    const box = el('div','card'); box.style.padding='4px 14px';
+
     if(fs.mode==='equal'){
-      const box = el('div','card'); box.style.padding='4px 14px';
       names.forEach(nm=>{
         const r = el('div','split-row');
-        r.innerHTML = `${avatar(nm,'sm')}<span class="name">${esc(nm)}</span><span class="num" style="font-weight:600">${money(split[nm])}</span>`;
+        r.innerHTML = `${avatar(nm,'sm')}<span class="name">${esc(nm)}</span><span class="num" style="font-weight:600">${money(cs.split[nm])}</span>`;
         box.appendChild(r);
       });
       d.appendChild(box);
       const s = el('div','split-summary good');
-      s.innerHTML = `<span>${names.length} ${names.length===1?'person':'people'} · equal shares</span><span class="v num">${money(total)}</span>`;
+      s.innerHTML = `<span>${names.length} ${names.length===1?'person':'people'} · equal shares</span><span class="v num">${money(cs.total)}</span>`;
       d.appendChild(s);
-    } else {
-      const box = el('div','card'); box.style.padding='4px 14px';
+    }
+    else if(fs.mode==='shares'){
       names.forEach(nm=>{
+        const wv = fs.shares[nm]!=null?fs.shares[nm]:1;
         const r = el('div','split-row');
-        r.innerHTML = `${avatar(nm,'sm')}<span class="name">${esc(nm)}</span>
-          <div class="money-input amt"><span class="sym" style="font-size:13px">£</span>
-          <input class="input" data-nm="${esc(nm)}" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${fs.exact[nm]!=null?fs.exact[nm]:''}" style="padding-left:24px;font-size:15px"></div>`;
+        r.innerHTML = `${avatar(nm,'sm')}<span class="name" style="flex:1">${esc(nm)}</span>
+          <div class="stepper"><button class="st-dn" data-nm="${esc(nm)}">−</button><span class="st-v">${wv}</span><button class="st-up" data-nm="${esc(nm)}">+</button></div>
+          <span class="num" style="font-weight:600;min-width:62px;text-align:right">${money(cs.split[nm]||0)}</span>`;
         box.appendChild(r);
       });
       d.appendChild(box);
-      box.querySelectorAll('input[data-nm]').forEach(inp=>{
-        inp.oninput = ()=>{ fs.exact[inp.dataset.nm]=inp.value; const {sum,total}=currentSplit(); updateSummary(sum,total); updateSave(); };
-      });
-      const diff = total-sum;
-      const s = el('div','split-summary '+(Math.abs(diff)<0.011?'good':'bad'));
-      s.id='exactSummary';
-      s.innerHTML = summaryHTML(sum,total);
+      box.querySelectorAll('.st-up').forEach(b=> b.onclick=()=>{ const nm=b.dataset.nm; fs.shares[nm]=(fs.shares[nm]!=null?+fs.shares[nm]:1)+1; drawDetail(); });
+      box.querySelectorAll('.st-dn').forEach(b=> b.onclick=()=>{ const nm=b.dataset.nm; fs.shares[nm]=Math.max(0,(fs.shares[nm]!=null?+fs.shares[nm]:1)-1); drawDetail(); });
+      const s = el('div','split-summary '+(cs.ok?'good':'bad'));
+      s.innerHTML = `<span>Proportional · ${cs.totalW||0} share${cs.totalW===1?'':'s'}</span><span class="v num">${money(cs.total)}</span>`;
       d.appendChild(s);
+    }
+    else if(fs.mode==='percent'){
+      ensurePct();
+      const refs={};
+      names.forEach(nm=>{
+        const row = el('div','pct-row');
+        row.innerHTML = `<div class="pct-head">
+            <button class="pct-lock" title="Lock this share">🔓</button>
+            ${avatar(nm,'sm')}<span class="name" style="flex:1">${esc(nm)}</span>
+            <span class="pct-mini"><span class="numbox"><input class="pct-in pin" type="number" inputmode="numeric" min="0" max="100" step="1"><span class="nstep"><button class="nup" type="button">▲</button><button class="ndn" type="button">▼</button></span></span>%</span>
+            <span class="pct-mini">£<span class="numbox amt"><input class="pct-in ain" type="number" inputmode="decimal" min="0" step="0.01"><span class="nstep"><button class="nup" type="button">▲</button><button class="ndn" type="button">▼</button></span></span></span>
+          </div>
+          <input type="range" class="pct-slider" min="0" max="100" step="1" value="${fs.pct[nm]||0}">`;
+        box.appendChild(row);
+        const nb = row.querySelectorAll('.numbox');
+        refs[nm] = {
+          row, lock:row.querySelector('.pct-lock'), sl:row.querySelector('.pct-slider'),
+          pin:nb[0].querySelector('input'), pinUp:nb[0].querySelector('.nup'), pinDn:nb[0].querySelector('.ndn'),
+          ain:nb[1].querySelector('input'), ainUp:nb[1].querySelector('.nup'), ainDn:nb[1].querySelector('.ndn')
+        };
+      });
+      d.appendChild(box);
+      const s = el('div','split-summary good'); s.id='pctSummary'; d.appendChild(s);
+
+      const fmtPct = p => { const r=Math.round((p||0)*10)/10; return Number.isInteger(r)?String(r):r.toFixed(1); };
+      const refresh = (activeEl)=>{
+        const total = Number(form.querySelector('#exTotal').value)||0;
+        const amts = pctAmounts(total);
+        const lockedSum = names.filter(n=>fs.locked[n]).reduce((acc,n)=>acc+(fs.pct[n]||0),0);
+        const available = Math.max(0,100-lockedSum);
+        names.forEach(nm=>{ const rf=refs[nm], locked=!!fs.locked[nm];
+          // slider works in pennies when there's a total, so it nudges money penny by penny
+          if(total>0){ rf.sl.step=1; rf.sl.max = Math.max(1, Math.round((locked?100:available)*total)); if(rf.sl!==activeEl) rf.sl.value = Math.round((fs.pct[nm]||0)*total); }
+          else { rf.sl.step=1; rf.sl.max = locked?100:available; if(rf.sl!==activeEl) rf.sl.value = Math.round(fs.pct[nm]||0); }
+          rf.sl.disabled=locked;
+          if(rf.pin!==document.activeElement) rf.pin.value=fmtPct(fs.pct[nm]);
+          if(rf.ain!==document.activeElement) rf.ain.value=(amts[nm]||0).toFixed(2);
+          const amtOff = locked || !(total>0);
+          rf.pin.disabled=locked; rf.ain.disabled=amtOff;
+          rf.pinUp.disabled=locked; rf.pinDn.disabled=locked; rf.ainUp.disabled=amtOff; rf.ainDn.disabled=amtOff;
+          rf.lock.textContent=locked?'🔒':'🔓'; rf.lock.classList.toggle('on',locked);
+          rf.row.classList.toggle('locked',locked);
+        });
+        const nL=names.filter(n=>fs.locked[n]).length;
+        s.innerHTML = `<span>Percentages · always 100%${nL?` · ${nL} locked`:''}</span><span class="v num">${money(total)}</span>`;
+      };
+      const total0 = ()=> Number(form.querySelector('#exTotal').value)||0;
+      const bumpPct = (nm,d)=>{ if(fs.locked[nm]) return; rebalancePct(nm, (fs.pct[nm]||0)+d); refresh(); updateSave(); };
+      const bumpAmt = (nm,d)=>{ if(fs.locked[nm]) return; const t=total0(); if(t<=0) return; const cur=(fs.pct[nm]||0)/100*t; rebalancePct(nm, (cur+d)/t*100); refresh(); updateSave(); };
+      names.forEach(nm=>{
+        const rf=refs[nm];
+        rf.sl.oninput = ()=>{ if(fs.locked[nm]) return; const t=total0(); const vPct = t>0 ? Number(rf.sl.value)/t : Number(rf.sl.value); rebalancePct(nm, vPct); refresh(rf.sl); updateSave(); };
+        rf.pin.onchange = ()=>{ if(fs.locked[nm]) return; rebalancePct(nm, Number(rf.pin.value)||0); refresh(); updateSave(); };
+        rf.ain.onchange = ()=>{ if(fs.locked[nm]) return; const t=total0(); if(t>0) rebalancePct(nm, (Number(rf.ain.value)||0)/t*100); refresh(); updateSave(); };
+        rf.pinUp.onclick=()=>bumpPct(nm,1); rf.pinDn.onclick=()=>bumpPct(nm,-1);
+        rf.ainUp.onclick=()=>bumpAmt(nm,0.01); rf.ainDn.onclick=()=>bumpAmt(nm,-0.01);
+        rf.lock.onclick = ()=>{ fs.locked[nm]=!fs.locked[nm]; refresh(); updateSave(); };
+      });
+      refresh();
+    }
+    else {
+      names.forEach(nm=>{
+        const isRem = cs.remainder===nm;
+        const r = el('div','split-row');
+        const amtCell = isRem
+          ? `<span class="num" style="font-weight:600;min-width:70px;text-align:right">${money(cs.split[nm]||0)}</span>`
+          : `<div class="money-input amt"><span class="sym" style="font-size:13px">£</span><input class="input" data-nm="${esc(nm)}" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${fs.exact[nm]!=null?fs.exact[nm]:''}" style="padding-left:24px;font-size:15px"></div>`;
+        r.innerHTML = `${avatar(nm,'sm')}<span class="name" style="flex:1">${esc(nm)}</span>
+          <button class="rest-btn${isRem?' on':''}" data-nm="${esc(nm)}" title="Cover the remainder">rest</button>${amtCell}`;
+        box.appendChild(r);
+      });
+      d.appendChild(box);
+      box.querySelectorAll('input[data-nm]').forEach(inp=>{ inp.oninput=()=>{ fs.exact[inp.dataset.nm]=inp.value; updateExactSummary(currentSplit()); updateSave(); }; });
+      box.querySelectorAll('.rest-btn').forEach(b=> b.onclick=()=>{ const nm=b.dataset.nm; fs.remainder = (fs.remainder===nm)?null:nm; drawDetail(); });
+      const s = el('div','split-summary'); s.id='exactSummary'; d.appendChild(s);
+      updateExactSummary(cs);
     }
     updateSave();
   }
-  function summaryHTML(sum,total){
-    const diff = Math.round((total-sum)*100)/100;
-    if(Math.abs(diff)<0.011) return `<span>Adds up perfectly</span><span class="v num">${money(total)}</span>`;
-    if(diff>0) return `<span>${money(diff)} left to assign</span><span class="v num">${money(sum)} / ${money(total)}</span>`;
-    return `<span>${money(-diff)} over the total</span><span class="v num">${money(sum)} / ${money(total)}</span>`;
-  }
-  function updateSummary(sum,total){
+  function updateExactSummary(cs){
     const s = form.querySelector('#exactSummary'); if(!s) return;
-    const ok = Math.abs(total-sum)<0.011;
-    s.className = 'split-summary '+(ok?'good':'bad');
-    s.innerHTML = summaryHTML(sum,total);
+    if(cs.remainder){
+      const ok = cs.remAmt>=-0.001;
+      s.className = 'split-summary '+(ok?'good':'bad');
+      s.innerHTML = ok
+        ? `<span>${esc(cs.remainder)} covers the rest</span><span class="v num">${money(cs.remAmt)}</span>`
+        : `<span>${money(-cs.remAmt)} over the total</span><span class="v num">${money(cs.fixedSum)} / ${money(cs.total)}</span>`;
+    } else {
+      const diff = Math.round((cs.total-cs.sum)*100)/100;
+      const ok = Math.abs(diff)<0.011;
+      s.className = 'split-summary '+(ok?'good':'bad');
+      s.innerHTML = ok ? `<span>Adds up perfectly</span><span class="v num">${money(cs.total)}</span>`
+        : diff>0 ? `<span>${money(diff)} left to assign</span><span class="v num">${money(cs.sum)} / ${money(cs.total)}</span>`
+        : `<span>${money(-diff)} over the total</span><span class="v num">${money(cs.sum)} / ${money(cs.total)}</span>`;
+    }
   }
   function updateSave(){
     const {ok} = currentSplit();
