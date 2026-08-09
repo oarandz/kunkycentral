@@ -358,6 +358,9 @@ const state = {
 };
 const fuelPence = () => (state.settings && state.settings.fuelPence) || 156;
 const fuelGBP = () => '£'+ (fuelPence()/100).toFixed(2);
+const ntfySlug = n => String(n).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+const ntfyServerBase = () => { const s=(state.settings&&state.settings.ntfyServer)||'https://ntfy.sh'; return /^https?:\/\//.test(s)?s.replace(/\/+$/,''):'https://ntfy.sh'; };
+const personTopic = name => (state.settings&&state.settings.ntfyBase) ? state.settings.ntfyBase+'-'+ntfySlug(name) : '';
 const placeResolve = txt => { const p = state.places.find(x=>x.label.toLowerCase()===String(txt||'').trim().toLowerCase()); return p ? p.address : txt; };
 const allTags = () => [...new Set(state.expenses.map(x=>x.tag).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
 const placeDatalist = id => `<datalist id="${id}">${state.places.map(p=>`<option value="${esc(p.label)}"></option>`).join('')}</datalist>`;
@@ -1644,6 +1647,65 @@ function viewSettings(){
       else { state.settings.fuelPence = p; }
       toast('Fuel price updated'); renderAll();
     }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save fuel price'; }
+  };
+
+  // ---- Notifications ----
+  const neb = el('div','section-eyebrow','Notifications'); neb.style.marginTop='24px';
+  wrap.appendChild(neb);
+  wrap.appendChild(el('div','page-sub','Get a push when something changes your balance. Install the free ntfy app, then subscribe to your own topic below.'));
+
+  const ncard = el('div','card'); ncard.style.padding='16px';
+  ncard.innerHTML = `
+    <div class="field" style="margin-bottom:10px"><label>Topic prefix <span class="hint">keep it unguessable — it acts like a password</span></label>
+      <input class="input" id="ntfyBase" autocomplete="off" placeholder="e.g. kunky-econ-7f3a9c2e" value="${esc((state.settings&&state.settings.ntfyBase)||'')}"></div>
+    <button class="btn btn-primary btn-block" id="saveNtfy">Save & turn on</button>`;
+  wrap.appendChild(ncard);
+
+  const enabled = !!(state.settings && state.settings.ntfyBase);
+  if(enabled){
+    wrap.appendChild(el('div','section-eyebrow','Each person’s topic'));
+    const list = el('div','card'); list.style.padding='4px 16px';
+    state.people.forEach(p=>{
+      const topic = personTopic(p.name);
+      const r = el('div','veh-row');
+      r.innerHTML = `${avatar(p.name,'md')}<div style="flex:1;min-width:0">
+          <div class="vn">${esc(p.name)}</div>
+          <div class="vm" style="word-break:break-all">${esc(topic)}</div></div>
+        <button class="btn btn-ghost btn-sm ncopy">Copy</button>`;
+      r.querySelector('.ncopy').onclick = async ()=>{
+        try{ await navigator.clipboard.writeText(topic); toast('Topic copied'); }
+        catch(e){ toast(topic,'ok'); }
+      };
+      list.appendChild(r);
+    });
+    wrap.appendChild(list);
+
+    const openMine = el('a','btn btn-ghost btn-block','🔔 Open my topic to subscribe');
+    openMine.href = `${ntfyServerBase()}/${personTopic(state.me)}`; openMine.target='_blank'; openMine.style.marginTop='12px';
+    wrap.appendChild(openMine);
+    const testBtn = el('button','btn btn-ghost btn-block','Send myself a test'); testBtn.style.marginTop='10px';
+    testBtn.onclick = async ()=>{
+      if(!SCRIPT_URL) return toast('Connect your sheet first','err');
+      testBtn.disabled=true; testBtn.innerHTML='<span class="spin"></span>';
+      try{ await api('testNtfy',{name:state.me}); toast('Test sent — check your phone'); }
+      catch(e){ toast(e.message,'err'); }
+      finally{ testBtn.disabled=false; testBtn.textContent='Send myself a test'; }
+    };
+    wrap.appendChild(testBtn);
+  }
+
+  const nnote = el('div','note');
+  nnote.innerHTML = `<span class="ni">🔔</span><span>Each person subscribes to just their own topic in the ntfy app (or web). You’ll be notified about expenses you’re in, payments to you, and trips you’re on. Topics are public, so if the prefix ever leaks, change it here and everyone re-subscribes.</span>`;
+  wrap.appendChild(nnote);
+
+  ncard.querySelector('#saveNtfy').onclick = async ()=>{
+    const base = ntfySlug(ncard.querySelector('#ntfyBase').value);
+    const btn = ncard.querySelector('#saveNtfy'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+    try{
+      if(SCRIPT_URL){ applyData(await api('setNtfy',{base})); }
+      else { state.settings.ntfyBase = base; }
+      toast(base?'Notifications on':'Notifications off'); renderAll();
+    }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save & turn on'; }
   };
 
   const eb = el('div','section-eyebrow','Saved places'); eb.style.marginTop='24px';
