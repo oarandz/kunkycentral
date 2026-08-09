@@ -1658,6 +1658,8 @@ function viewSettings(){
   ncard.innerHTML = `
     <div class="field" style="margin-bottom:10px"><label>Topic prefix <span class="hint">keep it unguessable — it acts like a password</span></label>
       <input class="input" id="ntfyBase" autocomplete="off" placeholder="e.g. kunky-econ-7f3a9c2e" value="${esc((state.settings&&state.settings.ntfyBase)||'')}"></div>
+    <div class="field" style="margin-bottom:10px"><label>Access token <span class="hint">${(state.settings&&state.settings.ntfyTokenSet)?'✓ saved — leave blank to keep':'tk_… from your free ntfy.sh account'}</span></label>
+      <input class="input" id="ntfyToken" type="password" autocomplete="off" placeholder="${(state.settings&&state.settings.ntfyTokenSet)?'•••••••• (saved)':'tk_xxxxxxxxxxxx'}"></div>
     <button class="btn btn-primary btn-block" id="saveNtfy">Save & turn on</button>`;
   wrap.appendChild(ncard);
 
@@ -1695,15 +1697,18 @@ function viewSettings(){
   }
 
   const nnote = el('div','note');
-  nnote.innerHTML = `<span class="ni">🔔</span><span>Each person subscribes to just their own topic in the ntfy app (or web). You’ll be notified about expenses you’re in, payments to you, and trips you’re on. Topics are public, so if the prefix ever leaks, change it here and everyone re-subscribes.</span>`;
+  nnote.innerHTML = `<span class="ni">🔔</span><span>ntfy's free tier limits anonymous senders by IP, and Google's servers share one — so an access token from a free ntfy.sh account is needed to send reliably. Each person then subscribes to just their own topic in the ntfy app. You're notified about expenses you're in, payments to you, and trips you're on. Topics are public, so if the prefix leaks, change it here and everyone re-subscribes.</span>`;
   wrap.appendChild(nnote);
 
   ncard.querySelector('#saveNtfy').onclick = async ()=>{
     const base = ntfySlug(ncard.querySelector('#ntfyBase').value);
+    const token = ncard.querySelector('#ntfyToken').value.trim();
+    const payload = { base };
+    if(token) payload.token = token;
     const btn = ncard.querySelector('#saveNtfy'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
     try{
-      if(SCRIPT_URL){ applyData(await api('setNtfy',{base})); }
-      else { state.settings.ntfyBase = base; }
+      if(SCRIPT_URL){ applyData(await api('setNtfy',payload)); }
+      else { state.settings.ntfyBase = base; if(token) state.settings.ntfyTokenSet=true; }
       toast(base?'Notifications on':'Notifications off'); renderAll();
     }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save & turn on'; }
   };
