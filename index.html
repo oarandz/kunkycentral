@@ -1946,6 +1946,34 @@ function viewSettings(){
   addP.onclick = ()=>placeEditorSheet();
   wrap.appendChild(addP);
 
+  // ---- One-time import from the old Google version ----
+  const ieb = el('div','section-eyebrow','Import old data'); ieb.style.marginTop='24px';
+  wrap.appendChild(ieb);
+  wrap.appendChild(el('div','page-sub','Moving over from the old Google (Apps Script) version? Pull everything across once. Keep the old deployment running until this succeeds.'));
+  const icard = el('div','card'); icard.style.padding='16px';
+  icard.innerHTML = `
+    <div class="field" style="margin-bottom:10px"><label>Old Apps Script URL <span class="hint">ends in /exec</span></label>
+      <input class="input" id="impUrl" autocomplete="off" placeholder="https://script.google.com/macros/s/.../exec"></div>
+    <div class="field" style="margin-bottom:12px"><label>Old access key</label>
+      <input class="input" id="impSecret" autocomplete="off" value="split-7f3a9c2e8b1d4056"></div>
+    <button class="btn btn-primary btn-block" id="impRun">Import everything</button>`;
+  wrap.appendChild(icard);
+  const inote = el('div','note');
+  inote.innerHTML = `<span class="ni">📦</span><span>Brings across people, all expenses, payments and trips, vehicles, quick items, places and the fuel price. Safe to run more than once — it updates existing rows rather than duplicating. Old receipt links keep working.</span>`;
+  wrap.appendChild(inote);
+  icard.querySelector('#impRun').onclick = async ()=>{
+    if(!connected) return toast('Connect to Supabase first','err');
+    const oldUrl = icard.querySelector('#impUrl').value.trim();
+    const secret = icard.querySelector('#impSecret').value.trim();
+    if(!oldUrl) return toast('Paste the old Apps Script URL','err');
+    const btn = icard.querySelector('#impRun'); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Importing…';
+    try{
+      const counts = await migrateFromApps(oldUrl, secret);
+      toast(`Imported ${counts.people} people, ${counts.expenses} entries`);
+      await refresh();
+    }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Import everything'; }
+  };
+
   return wrap;
 }
 
