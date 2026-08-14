@@ -330,16 +330,27 @@
 <div id="toasts"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 /* ============================================================== *
- *  PASTE YOUR WEB APP URL HERE (ends in /exec) — or use the
- *  connection box at the top of the app. Leaving it blank just
- *  means the app runs in preview mode until you connect.
+ *  SUPABASE CONNECTION
+ *  Paste your Project URL and anon (public) key below — find them
+ *  in your Supabase dashboard under Settings → API. The anon key is
+ *  safe to ship in the page; access is governed by your RLS rules.
+ *  You can also connect at runtime via the box at the top of the app.
  * ============================================================== */
-let SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyiDoq6R8czEa6iymh_t0zrupUwvQGrLaX5IS2ScTFhAuaUQdl5yCTjgFOUq4QgiSMH/exec";
+let SUPABASE_URL = "https://zlauszzjvhlivyskcoqt.supabase.co";
+let SUPABASE_ANON_KEY = "sb_publishable_0_6a25hAU3KPKSOfcbZRxQ_BCgla_LQ";
+let sb = null;          // supabase client
+let connected = false;  // true once the client is ready
 
-// Must match SHARED_SECRET in Code.gs exactly.
-const SHARED_SECRET = "split-7f3a9c2e8b1d4056";
+function initSupabase(){
+  if(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase){
+    try{ sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); connected = true; }
+    catch(e){ connected = false; }
+  }
+  return connected;
+}
 
 /* ---------------- State ---------------- */
 const PALETTE = ['#E5564B','#1DAA6B','#3B82F6','#F59E0B','#8B5CF6','#EC4899','#0EA5E9','#14B8A6','#F97316','#6366F1'];
@@ -380,17 +391,190 @@ const fmtDate = ts => new Date(ts).toLocaleDateString('en-GB',{day:'numeric',mon
 // true when an expense/transfer creates a debt between a and b
 const involvesPair = (x,a,b) => { const sp=x.split||{}; return (x.paidBy===a && sp[b]!=null) || (x.paidBy===b && sp[a]!=null); };
 
-/* ---------------- Backend ---------------- */
+/* ---------------- Backend (Supabase) ---------------- */
+const normSplit = v => (Array.isArray(v) ? v : 'all');
+
+async function fetchAllData(){
+  const [pe,ve,qe,qt,pl,ex,se] = await Promise.all([
+    sb.from('people').select('*').order('id'),
+    sb.from('vehicles').select('*').order('name'),
+    sb.from('quick_expenses').select('*').order('id'),
+    sb.from('quick_trips').select('*').order('id'),
+    sb.from('places').select('*').order('id'),
+    sb.from('expenses').select('*'),
+    sb.from('settings').select('*')
+  ]);
+  const err = pe.error||ve.error||qe.error||qt.error||pl.error||ex.error||se.error;
+  if(err) throw new Error(err.message || 'Supabase read failed');
+  const S={}; (se.data||[]).forEach(r=> S[r.key]=r.value);
+  return {
+    people: (pe.data||[]).filter(p=>p.active!==false).map(p=>({name:p.name, color:p.color||'#3B82F6'})),
+    vehicles: (ve.data||[]).map(v=>({name:v.name, mpg:Number(v.mpg)||0})),
+    quick: (qe.data||[]).map(q=>({label:q.label, emoji:q.emoji||'⚡', amount:Number(q.amount)||0, description:q.description||'', split:normSplit(q.split)})),
+    quickTrips: (qt.data||[]).map(q=>({label:q.label, emoji:q.emoji||'🚗', origin:q.origin, destination:q.destination, vehicle:q.vehicle||'', mpg:Number(q.mpg)||0, roundTrip:!!q.round_trip, split:normSplit(q.split)})),
+    places: (pl.data||[]).map(p=>({label:p.label, address:p.address})),
+    expenses: (ex.data||[]).map(x=>({id:x.id, ts:new Date(x.ts).getTime(), name:x.name, description:x.description||'', paidBy:x.paid_by, total:Number(x.total)||0, type:x.type||'expense', split:x.split||{}, receiptUrl:x.receipt_url||'', tag:x.tag||''})),
+    settings: { fuelPence:Number(S.fuelPence)||156, ntfyBase:S.ntfyBase||'', ntfyServer:S.ntfyServer||'https://ntfy.sh', ntfyToken:S.ntfyToken||'', ntfyTokenSet: !!S.ntfyToken }
+  };
+}
+function sbThrow(error){ if(error) throw new Error(error.message||'Supabase error'); }
+
+async function uploadReceipt(r){
+  const bytes = Uint8Array.from(atob(r.data), c=>c.charCodeAt(0));
+  const blob = new Blob([bytes], {type:r.mimeType||'application/octet-stream'});
+  const path = Date.now()+'_'+Math.random().toString(36).slice(2)+'_'+String(r.name||'receipt').replace(/[^\w.\-]/g,'_');
+  const up = await sb.storage.from('receipts').upload(path, blob, {contentType:r.mimeType, upsert:false});
+  sbThrow(up.error);
+  return sb.storage.from('receipts').getPublicUrl(path).data.publicUrl;
+}
+
+/* ntfy — sent straight from the browser (your own IP, so no shared-IP limit) */
+async function ntfySend(list){
+  const st = state.settings||{};
+  const server = /^https?:\/\//.test(st.ntfyServer||'') ? st.ntfyServer.replace(/\/+$/,'') : 'https://ntfy.sh';
+  const token = st.ntfyToken||'';
+  await Promise.all(list.map(n=>{
+    const headers = {'Title':n.title};
+    if(token) headers['Authorization']='Bearer '+token;
+    if(n.tags) headers['Tags']=n.tags;
+    return fetch(server+'/'+n.topic, {method:'POST', headers, body:n.message}).catch(()=>{});
+  }));
+}
+async function notifyForExpense(info){
+  const base = state.settings && state.settings.ntfyBase; if(!base) return;
+  const list=[];
+  if(info.type==='transfer'){
+    const to = Object.keys(info.split)[0];
+    if(to && to!==info.paidBy) list.push({topic:personTopic(to), title:'Payment received', message:`${info.paidBy} paid you £${Number(info.total).toFixed(2)}.`, tags:'money_with_wings'});
+  } else {
+    const label = info.type==='trip'?'trip':'expense';
+    const tag = info.type==='trip'?'car':'moneybag';
+    Object.keys(info.split).forEach(p=>{ const share=Number(info.split[p])||0; if(p===info.paidBy||share<=0) return;
+      list.push({topic:personTopic(p), title:'New '+label, message:`${info.paidBy} added "${info.name}" — £${Number(info.total).toFixed(2)} total. Your share: £${share.toFixed(2)}.`, tags:tag}); });
+  }
+  if(list.length) await ntfySend(list);
+}
+
+/* trip distance — keyless geocoding (Nominatim) + routing (OSRM) */
+const geoCache = {};
+async function geocode(q){
+  if(geoCache[q]) return geoCache[q];
+  const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`, {headers:{'Accept':'application/json'}});
+  const j = await res.json();
+  if(!j.length) throw new Error(`Couldn't find "${q}" on the map — try a postcode.`);
+  const c = {lat:Number(j[0].lat), lng:Number(j[0].lon)}; geoCache[q]=c; return c;
+}
+async function calcTripClient(payload){
+  let stops=[];
+  if(payload.stops && payload.stops.length) stops = payload.stops.map(s=>String(s||'').trim()).filter(Boolean);
+  else { const o=String(payload.origin||'').trim(), d=String(payload.destination||'').trim(); if(o)stops.push(o); if(d)stops.push(d); if(payload.roundTrip&&o)stops.push(o); }
+  if(stops.length<2) throw new Error('Enter a start and at least one more stop.');
+  const mpg=Number(payload.mpg); if(!(mpg>0)) throw new Error('Enter the vehicle MPG.');
+  const pence=fuelPence();
+  const coords=[]; for(const s of stops){ coords.push(await geocode(s)); }
+  const url=`https://router.project-osrm.org/route/v1/driving/${coords.map(c=>c.lng+','+c.lat).join(';')}?overview=full&geometries=geojson`;
+  const j=await (await fetch(url)).json();
+  if(j.code!=='Ok'||!j.routes||!j.routes.length) throw new Error('No driving route found between those places.');
+  const route=j.routes[0]; const legs=[]; let totalMiles=0;
+  route.legs.forEach((leg,idx)=>{ const miles=leg.distance/1609.344; totalMiles+=miles;
+    const litres=(miles/mpg)*4.54609, costExact=litres*(pence/100);
+    legs.push({from:stops[idx], to:stops[idx+1], miles:Math.round(miles*10)/10, litres:Math.round(litres*100)/100, cost:Math.round(costExact*100)/100, costExact}); });
+  const totalLitres=(totalMiles/mpg)*4.54609, totalCost=totalLitres*(pence/100);
+  const points=coords.map(c=>[c.lat,c.lng]);
+  const geo=(route.geometry&&route.geometry.coordinates)? route.geometry.coordinates.map(c=>[c[1],c[0]]) : points;
+  return { stops, origin:stops[0], destination:stops[stops.length-1], legs, miles:Math.round(totalMiles*10)/10, litres:Math.round(totalLitres*100)/100, cost:Math.round(totalCost*100)/100, pence, roundTrip:!!payload.roundTrip, points, geo };
+}
+
 async function api(action, payload){
-  if(!SCRIPT_URL) throw new Error('Not connected. Add your Web app URL up top.');
-  const res = await fetch(SCRIPT_URL, {
-    method:'POST', redirect:'follow',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({action, payload: payload||{}, secret: SHARED_SECRET})
-  });
+  payload = payload||{};
+  if(!connected || !sb) throw new Error('Not connected to Supabase yet.');
+  const refetch = async ()=> fetchAllData();
+  switch(action){
+    case 'getData': return fetchAllData();
+
+    case 'addPerson': {
+      const name=String(payload.name||'').trim(); if(!name) throw new Error('A name is required.');
+      const cur=(await sb.from('people').select('name')).data||[];
+      if(cur.some(p=>String(p.name).toLowerCase()===name.toLowerCase())) throw new Error(name+' is already on the list.');
+      const color=PALETTE[cur.length%PALETTE.length];
+      sbThrow((await sb.from('people').insert({name, color, active:true})).error);
+      return refetch();
+    }
+    case 'addExpense': {
+      const name=String(payload.name||'').trim(); const total=Number(payload.total); const paidBy=String(payload.paidBy||'').trim();
+      const split=payload.split||{};
+      if(!name) throw new Error('Give the expense a name.');
+      if(!(total>0)) throw new Error('Enter an amount greater than zero.');
+      if(!paidBy) throw new Error('Choose who paid.');
+      let receipt_url='';
+      if(payload.receipt && payload.receipt.data) receipt_url = await uploadReceipt(payload.receipt);
+      const id='exp_'+Date.now()+'_'+Math.floor(Math.random()*1e4);
+      const ts=new Date(payload.ts||Date.now()).toISOString();
+      sbThrow((await sb.from('expenses').insert({id, ts, name, description:String(payload.description||''), paid_by:paidBy, total, type:String(payload.type||'expense'), split, receipt_url, tag:String(payload.tag||'')})).error);
+      try{ await notifyForExpense({name, total, paidBy, split, type:String(payload.type||'expense')}); }catch(e){}
+      return refetch();
+    }
+    case 'deleteExpense': sbThrow((await sb.from('expenses').delete().eq('id', String(payload.id||''))).error); return refetch();
+    case 'setExpenseTag': sbThrow((await sb.from('expenses').update({tag:String(payload.tag||'').trim()}).eq('id', String(payload.id||''))).error); return refetch();
+
+    case 'addQuickExpense': {
+      const label=String(payload.label||'').trim(); if(!label) throw new Error('Give the quick expense a label.');
+      sbThrow((await sb.from('quick_expenses').upsert({label, emoji:payload.emoji||'⚡', amount:Number(payload.amount)||0, description:payload.description||'', split:payload.split==='all'?'all':(payload.split||'all')}, {onConflict:'label'})).error);
+      return refetch();
+    }
+    case 'deleteQuickExpense': sbThrow((await sb.from('quick_expenses').delete().eq('label', String(payload.label||''))).error); return refetch();
+
+    case 'addQuickTrip': {
+      const label=String(payload.label||'').trim(); if(!label) throw new Error('Give the quick trip a label.');
+      sbThrow((await sb.from('quick_trips').upsert({label, emoji:payload.emoji||'🚗', origin:payload.origin, destination:payload.destination, vehicle:payload.vehicle||'', mpg:Number(payload.mpg)||0, round_trip:!!payload.roundTrip, split:payload.split==='all'?'all':(payload.split||'all')}, {onConflict:'label'})).error);
+      return refetch();
+    }
+    case 'deleteQuickTrip': sbThrow((await sb.from('quick_trips').delete().eq('label', String(payload.label||''))).error); return refetch();
+
+    case 'addVehicle': sbThrow((await sb.from('vehicles').upsert({name:String(payload.name||'').trim(), mpg:Number(payload.mpg)||0}, {onConflict:'name'})).error); return refetch();
+    case 'deleteVehicle': sbThrow((await sb.from('vehicles').delete().eq('name', String(payload.name||''))).error); return refetch();
+
+    case 'addPlace': sbThrow((await sb.from('places').upsert({label:String(payload.label||'').trim(), address:String(payload.address||'').trim()}, {onConflict:'label'})).error); return refetch();
+    case 'deletePlace': sbThrow((await sb.from('places').delete().eq('label', String(payload.label||''))).error); return refetch();
+
+    case 'setFuelPrice': {
+      const p=Number(payload.fuelPence); if(!(p>0)) throw new Error('Enter a fuel price greater than zero.');
+      sbThrow((await sb.from('settings').upsert({key:'fuelPence', value:String(p)})).error); return refetch();
+    }
+    case 'setNtfy': {
+      const base=ntfySlug(String(payload.base||''));
+      sbThrow((await sb.from('settings').upsert({key:'ntfyBase', value:base})).error);
+      if(payload.server!=null) sbThrow((await sb.from('settings').upsert({key:'ntfyServer', value:String(payload.server||'').trim()||'https://ntfy.sh'})).error);
+      if(payload.token!=null) sbThrow((await sb.from('settings').upsert({key:'ntfyToken', value:String(payload.token||'').trim()})).error);
+      return refetch();
+    }
+    case 'testNtfy': {
+      if(!state.settings.ntfyBase) throw new Error('Set a notification topic first.');
+      await ntfySend([{topic:personTopic(payload.name||state.me), title:'Test notification', message:`🔔 Notifications are working for ${payload.name||state.me}.`, tags:'bell'}]);
+      return {sent:true};
+    }
+    case 'calcTrip': return calcTripClient(payload);
+    default: throw new Error('Unknown action: '+action);
+  }
+}
+
+/* one-time importer: pull everything from the old Apps Script backend */
+async function migrateFromApps(oldUrl, secret){
+  const res = await fetch(oldUrl, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getData', payload:{}, secret})});
   const out = await res.json();
-  if(!out.ok) throw new Error(out.error||'Something went wrong');
-  return out.data;
+  if(!out.ok) throw new Error(out.error||'Could not read the old data.');
+  const d = out.data; const counts={};
+  for(const p of (d.people||[])) sbThrow((await sb.from('people').upsert({name:p.name, color:p.color, active:true}, {onConflict:'name'})).error);
+  counts.people=(d.people||[]).length;
+  for(const v of (d.vehicles||[])) sbThrow((await sb.from('vehicles').upsert({name:v.name, mpg:v.mpg}, {onConflict:'name'})).error);
+  for(const p of (d.places||[])) sbThrow((await sb.from('places').upsert({label:p.label, address:p.address}, {onConflict:'label'})).error);
+  for(const q of (d.quick||[])) sbThrow((await sb.from('quick_expenses').upsert({label:q.label, emoji:q.emoji, amount:q.amount, description:q.description, split:q.split==='all'?'all':q.split}, {onConflict:'label'})).error);
+  for(const q of (d.quickTrips||[])) sbThrow((await sb.from('quick_trips').upsert({label:q.label, emoji:q.emoji, origin:q.origin, destination:q.destination, vehicle:q.vehicle, mpg:q.mpg, round_trip:q.roundTrip, split:q.split==='all'?'all':q.split}, {onConflict:'label'})).error);
+  for(const x of (d.expenses||[])) sbThrow((await sb.from('expenses').upsert({id:x.id, ts:new Date(x.ts).toISOString(), name:x.name, description:x.description, paid_by:x.paidBy, total:x.total, type:x.type, split:x.split, receipt_url:x.receiptUrl, tag:x.tag||''}, {onConflict:'id'})).error);
+  counts.expenses=(d.expenses||[]).length;
+  if(d.settings && d.settings.fuelPence) sbThrow((await sb.from('settings').upsert({key:'fuelPence', value:String(d.settings.fuelPence)})).error);
+  if(d.settings && d.settings.ntfyBase) sbThrow((await sb.from('settings').upsert({key:'ntfyBase', value:d.settings.ntfyBase})).error);
+  return counts;
 }
 function applyData(d){
   if(!d) return;
@@ -404,7 +588,7 @@ function applyData(d){
   if(state.me && !state.people.some(p=>p.name===state.me)) state.me = null;
 }
 async function refresh(){
-  if(!SCRIPT_URL) return;
+  if(!connected) return;
   try{ state.loading=true; const d = await api('getData'); state.connected=true; applyData(d); }
   catch(e){ state.connected=false; toast(e.message,'err'); }
   finally{ state.loading=false; renderAll(); }
@@ -478,8 +662,8 @@ function renderLogin(){
   grid.appendChild(add);
   wrap.appendChild(grid);
 
-  if(!SCRIPT_URL){
-    const note = el('p',null,'Running in preview mode — add your Web app URL after signing in to sync with your sheet.');
+  if(!connected){
+    const note = el('p',null,'Running in preview mode — connect Supabase after signing in to sync.');
     note.style.cssText='text-align:center;color:var(--faint);font-size:12.5px;margin-top:24px;line-height:1.5';
     wrap.appendChild(note);
   }
@@ -496,7 +680,7 @@ function addPersonSheet(){
     btn.onclick = async ()=>{
       const name = $('#newPersonName').value.trim();
       if(!name) return toast('Enter a name','err');
-      if(SCRIPT_URL){
+      if(connected){
         try{ btn.innerHTML='<span class="spin"></span>'; applyData(await api('addPerson',{name})); toast(name+' added'); }
         catch(e){ return toast(e.message,'err'); } finally{ btn.innerHTML='Add person'; }
       } else {
@@ -575,29 +759,53 @@ function renderAll(){
 /* ---------------- Connection banner ---------------- */
 function connBanner(){
   const c = el('div','conn'+(state.connected?' ok':''));
-  const collapsed = state.connected;
   c.innerHTML = `
     <div class="conn-head">
-      <h3>${state.connected?'Synced with your sheet':'Connect your Google Sheet'}</h3>
+      <h3>${state.connected?'Synced with Supabase':'Connect to Supabase'}</h3>
       <div class="status"><span class="led"></span>${state.connected?'Connected':'Not connected'}</div>
     </div>`;
   const body = el('div','conn-body');
-  body.style.display = collapsed ? 'none' : 'block';
+  body.style.display = state.connected ? 'none' : 'block';
   body.innerHTML = `
-    <p>Paste the Web app URL from your Apps Script deployment (it ends in <b>/exec</b>). See the setup notes in Code.gs.</p>
+    <p>Paste your Supabase <b>Project URL</b> and <b>anon key</b> (Settings → API). You can also bake them into the top of index.html so it connects automatically.</p>
+    <div class="field" style="margin-bottom:8px"><input class="input" id="sbUrl" placeholder="https://xxxx.supabase.co" value="${esc(SUPABASE_URL)}"></div>
     <div class="row">
-      <input class="input" id="urlInput" placeholder="https://script.google.com/macros/s/.../exec" value="${esc(SCRIPT_URL)}">
-      <button class="btn btn-primary btn-sm" id="urlSave">Connect</button>
+      <input class="input" id="sbKey" placeholder="anon public key (eyJ…)" value="${esc(SUPABASE_ANON_KEY)}">
+      <button class="btn btn-primary btn-sm" id="sbSave">Connect</button>
+    </div>
+    <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+      <p style="margin-bottom:8px">Moving over from the old Google version? Import everything once:</p>
+      <div class="field" style="margin-bottom:8px"><input class="input" id="oldUrl" placeholder="old Apps Script URL (…/exec)"></div>
+      <div class="row">
+        <input class="input" id="oldSecret" placeholder="old access key (split-…)" value="split-7f3a9c2e8b1d4056">
+        <button class="btn btn-ghost btn-sm" id="importOld">Import</button>
+      </div>
     </div>`;
   c.appendChild(body);
   c.querySelector('.conn-head').onclick = ()=>{ body.style.display = body.style.display==='none'?'block':'none'; };
-  body.querySelector('#urlSave').onclick = async (e)=>{
+  body.querySelector('#sbSave').onclick = async (e)=>{
     e.stopPropagation();
-    SCRIPT_URL = $('#urlInput').value.trim();
-    if(!SCRIPT_URL) return toast('Paste a URL first','err');
-    const btn = $('#urlSave'); btn.innerHTML='<span class="spin"></span>';
+    SUPABASE_URL = body.querySelector('#sbUrl').value.trim();
+    SUPABASE_ANON_KEY = body.querySelector('#sbKey').value.trim();
+    if(!SUPABASE_URL || !SUPABASE_ANON_KEY) return toast('Paste both the URL and the anon key','err');
+    const btn = body.querySelector('#sbSave'); btn.innerHTML='<span class="spin"></span>';
+    if(!initSupabase()){ btn.textContent='Connect'; return toast('Could not start the Supabase client','err'); }
     await refresh();
-    if(state.connected) toast('Connected to your sheet');
+    if(state.connected) toast('Connected to Supabase');
+  };
+  body.querySelector('#importOld').onclick = async (e)=>{
+    e.stopPropagation();
+    if(!connected) return toast('Connect to Supabase first','err');
+    const oldUrl = body.querySelector('#oldUrl').value.trim();
+    const secret = body.querySelector('#oldSecret').value.trim();
+    if(!oldUrl) return toast('Paste the old Apps Script URL','err');
+    const btn = body.querySelector('#importOld'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+    try{
+      const counts = await migrateFromApps(oldUrl, secret);
+      toast(`Imported ${counts.people} people, ${counts.expenses} entries`);
+      await refresh();
+    }catch(err){ toast(err.message,'err'); }
+    finally{ btn.disabled=false; btn.textContent='Import'; }
   };
   return c;
 }
@@ -761,7 +969,7 @@ function transferSheet(opts){
       };
       btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
       try{
-        if(SCRIPT_URL){ applyData(await api('addExpense',payload)); }
+        if(connected){ applyData(await api('addExpense',payload)); }
         else { state.expenses.unshift({id:'local_'+Date.now(),receiptUrl:'',...payload}); state.expenses.sort((a,b)=>b.ts-a.ts); }
         closeSheet(); toast('Payment recorded'); state.tab='balances'; renderAll();
       }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Record payment'; }
@@ -1086,7 +1294,7 @@ function viewAdd(prefill){
     if(draft.receipt) payload.receipt = { data:draft.receipt.data, name:draft.receipt.name, mimeType:draft.receipt.mimeType };
     const btn = form.querySelector('#saveExpense'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
     try{
-      if(SCRIPT_URL){ applyData(await api('addExpense', payload)); }
+      if(connected){ applyData(await api('addExpense', payload)); }
       else { state.expenses.unshift({id:'local_'+Date.now(),receiptUrl:'',...payload}); state.expenses.sort((a,b)=>b.ts-a.ts); }
       toast('Expense saved'); state.tab='balances'; renderAll();
     }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save expense'; }
@@ -1146,12 +1354,12 @@ function viewQuick(){
   return wrap;
 }
 async function deleteQuickTrip(q){
-  if(SCRIPT_URL){ try{ applyData(await api('deleteQuickTrip',{label:q.label})); toast('Removed'); }catch(e){ toast(e.message,'err'); } }
+  if(connected){ try{ applyData(await api('deleteQuickTrip',{label:q.label})); toast('Removed'); }catch(e){ toast(e.message,'err'); } }
   else { state.quickTrips = state.quickTrips.filter(x=>x!==q); }
   renderAll();
 }
 async function logQuickTrip(q){
-  if(!SCRIPT_URL) return toast('Connect your sheet to calculate trips.','err');
+  if(!connected) return toast('Connect to Supabase to calculate trips.','err');
   toast('Mapping route…');
   let r;
   try{ r = await api('calcTrip',{origin:placeResolve(q.origin), destination:placeResolve(q.destination), mpg:q.mpg, roundTrip:q.roundTrip}); }
@@ -1239,7 +1447,7 @@ function quickTripEditorSheet(){
         vehicle:s.querySelector('#qtVeh').value||'', mpg, roundTrip:s.querySelector('#qtRound').checked, split };
       btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
       try{
-        if(SCRIPT_URL){ applyData(await api('addQuickTrip',q)); }
+        if(connected){ applyData(await api('addQuickTrip',q)); }
         else { state.quickTrips.push(q); }
         closeSheet(); toast('Quick trip created'); renderAll();
       }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Create quick trip'; }
@@ -1277,7 +1485,7 @@ function logQuick(q){
       const payload={ name:q.label, total:q.amount, description:q.description||'', paidBy:fs.paidBy, split, type:'quick', ts: tsFromISO(s.querySelector('#qDate').value) };
       btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
       try{
-        if(SCRIPT_URL){ applyData(await api('addExpense',payload)); }
+        if(connected){ applyData(await api('addExpense',payload)); }
         else { state.expenses.unshift({id:'local_'+Date.now(),receiptUrl:'',...payload}); state.expenses.sort((a,b)=>b.ts-a.ts); }
         closeSheet(); toast(q.label+' logged'); state.tab='balances'; renderAll();
       }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Log '+money(q.amount); }
@@ -1286,7 +1494,7 @@ function logQuick(q){
   });
 }
 async function deleteQuick(q){
-  if(SCRIPT_URL){ try{ applyData(await api('deleteQuickExpense',{label:q.label})); toast('Removed'); }catch(e){ toast(e.message,'err'); } }
+  if(connected){ try{ applyData(await api('deleteQuickExpense',{label:q.label})); toast('Removed'); }catch(e){ toast(e.message,'err'); } }
   else { state.quick = state.quick.filter(x=>x!==q); }
   renderAll();
 }
@@ -1320,7 +1528,7 @@ function quickEditorSheet(){
       const q = { label, emoji:s.querySelector('#qEmoji').value.trim()||'⚡', amount, description:s.querySelector('#qDescQ').value.trim(), split };
       btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
       try{
-        if(SCRIPT_URL){ applyData(await api('addQuickExpense',q)); }
+        if(connected){ applyData(await api('addQuickExpense',q)); }
         else { state.quick.push(q); }
         closeSheet(); toast('Quick expense created'); renderAll();
       }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Create button'; }
@@ -1387,7 +1595,7 @@ function viewTrip(){
     const labels = trip.stops.map(s=>s.trim()).filter(Boolean);
     if(labels.length<2) return toast('Add at least a start and a destination','err');
     if(!(Number(trip.mpg)>0)) return toast('Enter the MPG','err');
-    if(!SCRIPT_URL) return toast('Connect your sheet to use the map — it does the distance maths.','err');
+    if(!connected) return toast('Connect to Supabase, then it maps the route and distance.','err');
     const btn = form.querySelector('#tCalc'); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Mapping route…';
     try{
       const r = await api('calcTrip',{stops: labels.map(placeResolve), mpg:Number(trip.mpg)});
@@ -1405,7 +1613,7 @@ function viewTrip(){
         <div class="vm">${v.mpg} mpg</div></div>
         <button class="btn btn-ghost btn-sm vdel">Remove</button>`;
       r.querySelector('.vdel').onclick = async ()=>{
-        if(SCRIPT_URL){ try{ applyData(await api('deleteVehicle',{name:v.name})); toast('Removed'); }catch(e){ toast(e.message,'err'); } }
+        if(connected){ try{ applyData(await api('deleteVehicle',{name:v.name})); toast('Removed'); }catch(e){ toast(e.message,'err'); } }
         else { state.vehicles=state.vehicles.filter(x=>x!==v); }
         renderAll();
       };
@@ -1555,7 +1763,7 @@ async function logTrip(r, sp, btn){
   };
   btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
   try{
-    if(SCRIPT_URL){ applyData(await api('addExpense',payload)); }
+    if(connected){ applyData(await api('addExpense',payload)); }
     else { state.expenses.unshift({id:'local_'+Date.now(),receiptUrl:'',...payload}); state.expenses.sort((a,b)=>b.ts-a.ts); }
     trip.result=null; toast('Trip logged'); state.tab='balances'; renderAll();
   }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Log trip · '+money(r.cost); }
@@ -1566,7 +1774,7 @@ function drawMap(r){
   if(_map){ _map.remove(); _map=null; }
   _map = L.map(node,{zoomControl:false, attributionControl:false});
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(_map);
-  const pts = r.polyline ? decodePolyline(r.polyline) : (r.points||[]);
+  const pts = (r.geo && r.geo.length) ? r.geo : (r.polyline ? decodePolyline(r.polyline) : (r.points||[]));
   let line;
   if(pts.length){ line = L.polyline(pts,{color:'#0E7C66',weight:4,opacity:.9}).addTo(_map); }
   (r.points||[]).forEach((pt,i)=>{
@@ -1604,7 +1812,7 @@ function vehicleEditorSheet(){
       if(!(mpg>0)) return toast('Enter the MPG','err');
       btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
       try{
-        if(SCRIPT_URL){ applyData(await api('addVehicle',{name,mpg})); }
+        if(connected){ applyData(await api('addVehicle',{name,mpg})); }
         else { state.vehicles.push({name,mpg,notes:''}); }
         trip.vehicle=name; closeSheet(); toast('Vehicle saved'); renderAll();
       }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save vehicle'; }
@@ -1643,7 +1851,7 @@ function viewSettings(){
     if(!(p>0)) return toast('Enter a price','err');
     const btn = card.querySelector('#saveFuel'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
     try{
-      if(SCRIPT_URL){ applyData(await api('setFuelPrice',{fuelPence:p})); }
+      if(connected){ applyData(await api('setFuelPrice',{fuelPence:p})); }
       else { state.settings.fuelPence = p; }
       toast('Fuel price updated'); renderAll();
     }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save fuel price'; }
@@ -1687,7 +1895,7 @@ function viewSettings(){
     wrap.appendChild(openMine);
     const testBtn = el('button','btn btn-ghost btn-block','Send myself a test'); testBtn.style.marginTop='10px';
     testBtn.onclick = async ()=>{
-      if(!SCRIPT_URL) return toast('Connect your sheet first','err');
+      if(!connected) return toast('Connect to Supabase first','err');
       testBtn.disabled=true; testBtn.innerHTML='<span class="spin"></span>';
       try{ await api('testNtfy',{name:state.me}); toast('Test sent — check your phone'); }
       catch(e){ toast(e.message,'err'); }
@@ -1707,7 +1915,7 @@ function viewSettings(){
     if(token) payload.token = token;
     const btn = ncard.querySelector('#saveNtfy'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
     try{
-      if(SCRIPT_URL){ applyData(await api('setNtfy',payload)); }
+      if(connected){ applyData(await api('setNtfy',payload)); }
       else { state.settings.ntfyBase = base; if(token) state.settings.ntfyTokenSet=true; }
       toast(base?'Notifications on':'Notifications off'); renderAll();
     }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save & turn on'; }
@@ -1726,7 +1934,7 @@ function viewSettings(){
         <div class="vm">${esc(p.address)}</div></div>
         <button class="btn btn-ghost btn-sm pdel">Remove</button>`;
       r.querySelector('.pdel').onclick = async ()=>{
-        if(SCRIPT_URL){ try{ applyData(await api('deletePlace',{label:p.label})); toast('Removed'); }catch(e){ toast(e.message,'err'); } }
+        if(connected){ try{ applyData(await api('deletePlace',{label:p.label})); toast('Removed'); }catch(e){ toast(e.message,'err'); } }
         else { state.places=state.places.filter(x=>x!==p); }
         renderAll();
       };
@@ -1756,7 +1964,7 @@ function placeEditorSheet(){
       if(!address) return toast('Enter the address','err');
       btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
       try{
-        if(SCRIPT_URL){ applyData(await api('addPlace',{label,address})); }
+        if(connected){ applyData(await api('addPlace',{label,address})); }
         else { state.places.push({label,address}); }
         closeSheet(); toast('Place saved'); renderAll();
       }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save place'; }
@@ -1864,7 +2072,7 @@ function expenseDetailSheet(x){
       const tag = tagF.querySelector('#dTag').value.trim();
       const b = tagF.querySelector('#dTagSave'); b.disabled=true; b.innerHTML='<span class="spin"></span>';
       try{
-        if(SCRIPT_URL){ applyData(await api('setExpenseTag',{id:x.id, tag})); }
+        if(connected){ applyData(await api('setExpenseTag',{id:x.id, tag})); }
         else { const e=state.expenses.find(e=>e.id===x.id); if(e) e.tag=tag; }
         x.tag=tag; closeSheet(); toast(tag?'Tagged':'Tag removed'); renderAll();
       }catch(e){ toast(e.message,'err'); b.disabled=false; b.textContent='Save'; }
@@ -1875,7 +2083,7 @@ function expenseDetailSheet(x){
     del.onclick = async ()=>{
       del.disabled=true; del.innerHTML='<span class="spin"></span>';
       try{
-        if(SCRIPT_URL){ applyData(await api('deleteExpense',{id:x.id})); }
+        if(connected){ applyData(await api('deleteExpense',{id:x.id})); }
         else { state.expenses=state.expenses.filter(e=>e.id!==x.id); }
         closeSheet(); toast('Deleted'); renderAll();
       }catch(e){ toast(e.message,'err'); del.disabled=false; del.innerHTML=isT?'Delete payment':'Delete expense'; }
@@ -1917,7 +2125,8 @@ function emptyState(ic,t,sub){
 
 /* ---------------- Boot ---------------- */
 renderLogin();
-if(SCRIPT_URL){ refresh(); }
+initSupabase();
+if(connected){ refresh(); }
 </script>
 </body>
 </html>
