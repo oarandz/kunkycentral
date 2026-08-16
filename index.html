@@ -500,6 +500,10 @@ async function scanReceipt(image){
   const prompt = 'You are a receipt parser. Read this receipt image and return ONLY JSON — no markdown, no commentary — in exactly this shape:\n'
     + '{"merchant":string,"items":[{"name":string,"qty":number,"price":number}],"delivery":number,"service":number,"total":number}\n'
     + 'Rules: "price" is the total for that line (quantity times unit price) in pounds as a number. Combine obvious duplicates only if the receipt does. "delivery" and "service" are 0 if not present. "total" is the grand total printed on the receipt. Use plain numbers (e.g. 12.50), no currency symbols. If a value is unreadable, give your best estimate.';
+  const isPdf = (image.mimeType||'').includes('pdf');
+  const media = isPdf
+    ? { type:'document', source:{ type:'base64', media_type:'application/pdf', data:image.data } }
+    : { type:'image', source:{ type:'base64', media_type:image.mimeType||'image/jpeg', data:image.data } };
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method:'POST',
     headers:{
@@ -510,10 +514,7 @@ async function scanReceipt(image){
     },
     body: JSON.stringify({
       model: AI_MODEL, max_tokens: 1500,
-      messages:[{ role:'user', content:[
-        { type:'image', source:{ type:'base64', media_type: image.mimeType||'image/jpeg', data: image.data } },
-        { type:'text', text: prompt }
-      ]}]
+      messages:[{ role:'user', content:[ media, { type:'text', text: prompt } ]}]
     })
   });
   if(!res.ok){ const t=await res.text(); throw new Error('AI error '+res.status+': '+t.slice(0,140)); }
@@ -1387,16 +1388,17 @@ function viewSmart(){
     const card=el('div','card'); card.style.padding='16px';
     card.innerHTML=`
       <label class="upload" for="scFile">
-        <div class="ic">📷</div>
-        <div><div class="t">${smart.image?'Photo ready — generate below':'Add a receipt photo'}</div><div class="s">A clear, flat, well-lit photo works best</div></div>
+        <div class="ic">🧾</div>
+        <div><div class="t">${smart.image?'File ready — generate below':'Add a receipt'}</div><div class="s">Photo, screenshot or PDF — a clear, flat one works best</div></div>
       </label>
-      <input type="file" id="scFile" accept="image/*" style="display:none">
+      <input type="file" id="scFile" accept="image/*,application/pdf,.pdf" style="display:none">
       <div id="scPrev"></div>
       <button class="btn btn-primary btn-block" id="scGen" ${smart.image?'':'disabled'} style="margin-top:14px">✨ Generate e-receipt</button>`;
     wrap.appendChild(card);
     if(!aiKey()){ const n=el('div','note'); n.innerHTML=`<span class="ni">🔑</span><span>Add your Anthropic API key in Settings → AI receipt scanning to use this.</span>`; wrap.appendChild(n); }
     const prev=card.querySelector('#scPrev');
-    if(smart.image) prev.innerHTML=`<div class="receipt-prev"><img src="${smart.image.preview}"><div style="flex:1"><div style="font-weight:600">Receipt photo</div><div style="color:var(--faint);font-size:12px">${(smart.image.size/1024).toFixed(0)} KB</div></div></div>`;
+    if(smart.image){ const isPdf=(smart.image.mimeType||'').includes('pdf');
+      prev.innerHTML=`<div class="receipt-prev">${smart.image.preview?`<img src="${smart.image.preview}">`:'<div class="act-ic">📄</div>'}<div style="flex:1"><div style="font-weight:600">${isPdf?'PDF receipt':'Receipt image'}</div><div style="color:var(--faint);font-size:12px">${(smart.image.size/1024).toFixed(0)} KB</div></div></div>`; }
     card.querySelector('#scFile').addEventListener('change', async e=>{
       const f=e.target.files[0]; if(!f) return;
       prev.innerHTML='<div class="receipt-prev">Processing…</div>';
@@ -1500,7 +1502,7 @@ async function submitReceipt(btn){
   const desc = smart.items.map(it=>`${it.name} £${(Number(it.price)||0).toFixed(2)}`).join('; ')
     + (smart.delivery?`; Delivery £${smart.delivery.toFixed(2)}`:'') + (smart.service?`; Service £${smart.service.toFixed(2)}`:'');
   const main={ name:smart.name||'Receipt', total, description:desc, paidBy:smart.paidBy, split, type:'expense', tag:(smart.tag||'').trim(), ts:tsFromISO(smart.date) };
-  if(smart.image) main.receipt={ data:smart.image.data, name:'receipt.jpg', mimeType:smart.image.mimeType };
+  if(smart.image){ const isPdf=(smart.image.mimeType||'').includes('pdf'); main.receipt={ data:smart.image.data, name:isPdf?'receipt.pdf':'receipt.jpg', mimeType:smart.image.mimeType||'image/jpeg' }; }
   const feeEach=AI_CALL_PENCE/100; const feeSplit={}; involved.forEach(p=>feeSplit[p]=feeEach);
   const payer = state.people.some(p=>p.name===API_PAYER)?API_PAYER:smart.paidBy;
   const fee={ name:'AI receipt scan', total:Math.round(feeEach*involved.length*100)/100, description:`${AI_CALL_PENCE}p per person for the scan`, paidBy:payer, split:feeSplit, type:'expense', ts:tsFromISO(smart.date) };
