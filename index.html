@@ -255,9 +255,11 @@
 
   /* ---------- Tab bar ---------- */
   .tabbar{position:fixed; bottom:0; left:0; right:0; z-index:40; display:flex; justify-content:center; pointer-events:none}
-  .tabbar .inner{pointer-events:auto; display:flex; gap:2px; background:rgba(24,27,35,.92); backdrop-filter:blur(12px);
-    margin-bottom:max(14px,env(safe-area-inset-bottom)); padding:6px; border-radius:999px; box-shadow:var(--shadow-lg)}
-  .tab{display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 14px; border-radius:999px; color:#9AA0AC; transition:.15s; min-width:58px}
+  .tabbar .inner{pointer-events:auto; display:flex; gap:1px; background:rgba(24,27,35,.92); backdrop-filter:blur(12px);
+    margin-bottom:max(14px,env(safe-area-inset-bottom)); padding:6px; border-radius:999px; box-shadow:var(--shadow-lg);
+    max-width:calc(100vw - 16px); overflow-x:auto; scrollbar-width:none}
+  .tabbar .inner::-webkit-scrollbar{display:none}
+  .tab{display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 11px; border-radius:999px; color:#9AA0AC; transition:.15s; min-width:50px; flex:none}
   .tab svg{width:21px; height:21px}
   .tab span{font-size:10px; font-weight:600}
   .tab.active{background:#fff; color:var(--ink)}
@@ -352,6 +354,12 @@ function initSupabase(){
   return connected;
 }
 
+/* ---- Smart add (receipt scanning with Claude) ---- */
+const AI_MODEL = "claude-haiku-4-5-20251001"; // vision-capable, cheap
+const API_PAYER = "Owen";   // who the 1p-per-scan charge is owed to
+const AI_CALL_PENCE = 1;    // pennies charged per involved person, per scan
+let ANTHROPIC_API_KEY = ""; // optional fallback — better to set it in Settings
+
 /* ---------------- State ---------------- */
 const PALETTE = ['#E5564B','#1DAA6B','#3B82F6','#F59E0B','#8B5CF6','#EC4899','#0EA5E9','#14B8A6','#F97316','#6366F1'];
 const SEED_PEOPLE = ['Owen','Alex','Conor','Ben','Alice','Lucy'];
@@ -369,6 +377,7 @@ const state = {
 };
 const fuelPence = () => (state.settings && state.settings.fuelPence) || 156;
 const fuelGBP = () => '£'+ (fuelPence()/100).toFixed(2);
+const aiKey = () => (state.settings && state.settings.aiKey) || ANTHROPIC_API_KEY;
 const ntfySlug = n => String(n).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
 const ntfyServerBase = () => { const s=(state.settings&&state.settings.ntfyServer)||'https://ntfy.sh'; return /^https?:\/\//.test(s)?s.replace(/\/+$/,''):'https://ntfy.sh'; };
 const personTopic = name => (state.settings&&state.settings.ntfyBase) ? state.settings.ntfyBase+'-'+ntfySlug(name) : '';
@@ -414,7 +423,7 @@ async function fetchAllData(){
     quickTrips: (qt.data||[]).map(q=>({label:q.label, emoji:q.emoji||'🚗', origin:q.origin, destination:q.destination, vehicle:q.vehicle||'', mpg:Number(q.mpg)||0, roundTrip:!!q.round_trip, split:normSplit(q.split)})),
     places: (pl.data||[]).map(p=>({label:p.label, address:p.address})),
     expenses: (ex.data||[]).map(x=>({id:x.id, ts:new Date(x.ts).getTime(), name:x.name, description:x.description||'', paidBy:x.paid_by, total:Number(x.total)||0, type:x.type||'expense', split:x.split||{}, receiptUrl:x.receipt_url||'', tag:x.tag||''})),
-    settings: { fuelPence:Number(S.fuelPence)||156, ntfyBase:S.ntfyBase||'', ntfyServer:S.ntfyServer||'https://ntfy.sh', ntfyToken:S.ntfyToken||'', ntfyTokenSet: !!S.ntfyToken }
+    settings: { fuelPence:Number(S.fuelPence)||156, ntfyBase:S.ntfyBase||'', ntfyServer:S.ntfyServer||'https://ntfy.sh', ntfyToken:S.ntfyToken||'', ntfyTokenSet: !!S.ntfyToken, aiKey:S.aiKey||'', aiKeySet: !!S.aiKey }
   };
 }
 function sbThrow(error){ if(error) throw new Error(error.message||'Supabase error'); }
@@ -485,6 +494,57 @@ async function calcTripClient(payload){
   return { stops, origin:stops[0], destination:stops[stops.length-1], legs, miles:Math.round(totalMiles*10)/10, litres:Math.round(totalLitres*100)/100, cost:Math.round(totalCost*100)/100, pence, roundTrip:!!payload.roundTrip, points, geo };
 }
 
+async function scanReceipt(image){
+  const key = aiKey();
+  if(!key) throw new Error('Add your Anthropic API key in Settings first.');
+  const prompt = 'You are a receipt parser. Read this receipt image and return ONLY JSON — no markdown, no commentary — in exactly this shape:\n'
+    + '{"merchant":string,"items":[{"name":string,"qty":number,"price":number}],"delivery":number,"service":number,"total":number}\n'
+    + 'Rules: "price" is the total for that line (quantity times unit price) in pounds as a number. Combine obvious duplicates only if the receipt does. "delivery" and "service" are 0 if not present. "total" is the grand total printed on the receipt. Use plain numbers (e.g. 12.50), no currency symbols. If a value is unreadable, give your best estimate.';
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers:{
+      'content-type':'application/json',
+      'x-api-key': key,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body: JSON.stringify({
+      model: AI_MODEL, max_tokens: 1500,
+      messages:[{ role:'user', content:[
+        { type:'image', source:{ type:'base64', media_type: image.mimeType||'image/jpeg', data: image.data } },
+        { type:'text', text: prompt }
+      ]}]
+    })
+  });
+  if(!res.ok){ const t=await res.text(); throw new Error('AI error '+res.status+': '+t.slice(0,140)); }
+  const data = await res.json();
+  const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
+  let clean = text.replace(/```json/gi,'').replace(/```/g,'').trim();
+  let parsed;
+  try{ parsed = JSON.parse(clean); }
+  catch(e){ const m = clean.match(/\{[\s\S]*\}/); if(!m) throw new Error('Could not read that receipt — try a clearer photo.'); parsed = JSON.parse(m[0]); }
+  if(!parsed.items || !parsed.items.length) throw new Error('No items found on that receipt.');
+  return parsed;
+}
+
+// Split items among their assignees; charges split equally across everyone involved.
+function computeReceiptShares(items, delivery, service, involved){
+  const raw={}; involved.forEach(p=>raw[p]=0);
+  items.forEach(it=>{ const who=[...(it.assignedTo||[])]; if(!who.length) return; const each=(Number(it.price)||0)/who.length; who.forEach(p=>{ if(raw[p]==null) raw[p]=0; raw[p]+=each; }); });
+  const chg=(Number(delivery)||0)+(Number(service)||0);
+  if(chg>0 && involved.length){ const each=chg/involved.length; involved.forEach(p=>raw[p]+=each); }
+  const totalF = items.reduce((s,it)=>s+(Number(it.price)||0),0)+chg;
+  const target = Math.round(totalF*100);
+  const names=involved.slice();
+  const cc={}; names.forEach(p=>cc[p]=Math.floor(raw[p]*100));
+  const order=names.map(p=>({p,f:raw[p]*100-Math.floor(raw[p]*100)})).sort((a,b)=>b.f-a.f);
+  let rem=target-names.reduce((s,p)=>s+cc[p],0),k=0;
+  while(rem>0){ cc[order[k%order.length].p]+=1; rem--; k++; }
+  while(rem<0){ const p=order[order.length-1-(k%order.length)].p; if(cc[p]>0){cc[p]-=1; rem++;} k++; }
+  const split={}; names.forEach(p=>split[p]=cc[p]/100);
+  return {split, total: target/100};
+}
+
 async function api(action, payload){
   payload = payload||{};
   if(!connected || !sb) throw new Error('Not connected to Supabase yet.');
@@ -552,6 +612,10 @@ async function api(action, payload){
       if(!state.settings.ntfyBase) throw new Error('Set a notification topic first.');
       await ntfySend([{topic:personTopic(payload.name||state.me), title:'Test notification', message:`🔔 Notifications are working for ${payload.name||state.me}.`, tags:'bell'}]);
       return {sent:true};
+    }
+    case 'setAiKey': {
+      sbThrow((await sb.from('settings').upsert({key:'aiKey', value:String(payload.key||'').trim()})).error);
+      return refetch();
     }
     case 'calcTrip': return calcTripClient(payload);
     default: throw new Error('Unknown action: '+action);
@@ -706,6 +770,7 @@ function showApp(){
 const TABS = [
   {id:'balances', label:'Balances', icon:'M3 13h4l2 5 4-12 2 7h6'},
   {id:'add', label:'Add', icon:'M12 5v14M5 12h14'},
+  {id:'smart', label:'Scan', icon:'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z'},
   {id:'quick', label:'Quick', icon:'M13 2L4.5 12.5h6L9 22l9-12h-6z'},
   {id:'trip', label:'Trip', icon:'M5 17h2l1-3h8l1 3h2M6 14l1.5-5h9L18 14M7.5 17.5h.01M16.5 17.5h.01'},
   {id:'activity', label:'Activity', icon:'M12 8v4l3 2M12 21a9 9 0 100-18 9 9 0 000 18z'},
@@ -750,6 +815,7 @@ function renderAll(){
   v.appendChild(connBanner());
   if(state.tab==='balances') v.appendChild(viewBalances());
   if(state.tab==='add') v.appendChild(viewAdd());
+  if(state.tab==='smart') v.appendChild(viewSmart());
   if(state.tab==='quick') v.appendChild(viewQuick());
   if(state.tab==='trip') v.appendChild(viewTrip());
   if(state.tab==='activity') v.appendChild(viewActivity());
@@ -1302,6 +1368,148 @@ function viewAdd(prefill){
 
   setTimeout(()=>{ drawPaidBy(); drawSplit(); drawDetail(); },0);
   return wrap;
+}
+
+/* ============================================================== *
+ *  SMART ADD (scan a receipt)
+ * ============================================================== */
+const smart = { image:null, parsed:false, items:[], delivery:0, service:0, statedTotal:0, name:'', merchant:'', paidBy:null, date:null, tag:'' };
+function smartReset(){ Object.assign(smart,{image:null,parsed:false,items:[],delivery:0,service:0,statedTotal:0,name:'',merchant:'',paidBy:null,date:null,tag:''}); }
+function smartInvolved(){ const s=new Set(); smart.items.forEach(it=>it.assignedTo.forEach(p=>s.add(p))); return [...s]; }
+function smartAllAssigned(){ return smart.items.length>0 && smart.items.every(it=>it.assignedTo.size>0); }
+
+function viewSmart(){
+  const wrap=el('div');
+  wrap.appendChild(el('div','page-title','Smart add'));
+  wrap.appendChild(el('div','page-sub','Snap a receipt — I’ll read the items so you can split them line by line.'));
+
+  if(!smart.parsed){
+    const card=el('div','card'); card.style.padding='16px';
+    card.innerHTML=`
+      <label class="upload" for="scFile">
+        <div class="ic">📷</div>
+        <div><div class="t">${smart.image?'Photo ready — generate below':'Add a receipt photo'}</div><div class="s">A clear, flat, well-lit photo works best</div></div>
+      </label>
+      <input type="file" id="scFile" accept="image/*" style="display:none">
+      <div id="scPrev"></div>
+      <button class="btn btn-primary btn-block" id="scGen" ${smart.image?'':'disabled'} style="margin-top:14px">✨ Generate e-receipt</button>`;
+    wrap.appendChild(card);
+    if(!aiKey()){ const n=el('div','note'); n.innerHTML=`<span class="ni">🔑</span><span>Add your Anthropic API key in Settings → AI receipt scanning to use this.</span>`; wrap.appendChild(n); }
+    const prev=card.querySelector('#scPrev');
+    if(smart.image) prev.innerHTML=`<div class="receipt-prev"><img src="${smart.image.preview}"><div style="flex:1"><div style="font-weight:600">Receipt photo</div><div style="color:var(--faint);font-size:12px">${(smart.image.size/1024).toFixed(0)} KB</div></div></div>`;
+    card.querySelector('#scFile').addEventListener('change', async e=>{
+      const f=e.target.files[0]; if(!f) return;
+      prev.innerHTML='<div class="receipt-prev">Processing…</div>';
+      try{ smart.image=await processFile(f); renderAll(); }catch(err){ toast('Could not read that image','err'); }
+    });
+    card.querySelector('#scGen').onclick=async ()=>{
+      if(!smart.image) return;
+      const btn=card.querySelector('#scGen'); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Reading receipt…';
+      try{
+        const p=await scanReceipt(smart.image);
+        smart.merchant=p.merchant||''; smart.name=p.merchant||'Receipt';
+        smart.items=(p.items||[]).map(it=>({name:String(it.name||'Item'), qty:Number(it.qty)||1, price:Number(it.price)||0, assignedTo:new Set()}));
+        smart.delivery=Number(p.delivery)||0; smart.service=Number(p.service)||0; smart.statedTotal=Number(p.total)||0;
+        smart.paidBy=state.me; smart.date=todayISO(); smart.tag=''; smart.parsed=true;
+        renderAll();
+      }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='✨ Generate e-receipt'; }
+    };
+    return wrap;
+  }
+
+  const ed=el('div'); wrap.appendChild(ed);
+  function renderEd(){
+    ed.innerHTML='';
+    const nameF=el('div','field'); nameF.innerHTML=`<label>Name</label><input class="input" id="scName" value="${esc(smart.name)}">`;
+    ed.appendChild(nameF); nameF.querySelector('#scName').onchange=e=>smart.name=e.target.value;
+
+    ed.appendChild(el('div','section-eyebrow','Items — assign each one'));
+    smart.items.forEach((it,idx)=>{
+      const card=el('div','card'); card.style.cssText='padding:12px 14px;margin-bottom:8px';
+      const unassigned = it.assignedTo.size===0;
+      card.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
+          <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:14.5px">${esc(it.name)}</div>${it.qty>1?`<div style="font-size:12px;color:var(--faint)">qty ${it.qty}</div>`:''}</div>
+          <div class="money-input" style="width:90px"><span class="sym" style="font-size:13px">£</span><input class="input scPrice" type="number" step="0.01" inputmode="decimal" value="${(Number(it.price)||0).toFixed(2)}" style="padding-left:22px;font-size:14px"></div>
+          <button class="stop-rm scDel" title="Remove">✕</button></div>
+        <div class="people-grid scWho"></div>
+        ${unassigned?'<div style="font-size:12px;color:var(--neg);margin-top:7px;font-weight:600">Assign this to someone →</div>':''}`;
+      ed.appendChild(card);
+      card.querySelector('.scPrice').onchange=e=>{ smart.items[idx].price=Number(e.target.value)||0; renderEd(); };
+      card.querySelector('.scDel').onclick=()=>{ smart.items.splice(idx,1); renderEd(); };
+      const g=card.querySelector('.scWho');
+      const all=el('button','pchip'+(it.assignedTo.size===state.people.length?' on':'')); all.innerHTML='Everyone<span class="tick">✓</span>';
+      all.onclick=()=>{ if(it.assignedTo.size===state.people.length) it.assignedTo.clear(); else state.people.forEach(p=>it.assignedTo.add(p.name)); renderEd(); };
+      g.appendChild(all);
+      state.people.forEach(p=>{ const b=el('button','pchip'+(it.assignedTo.has(p.name)?' on':''));
+        b.innerHTML=`${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+        b.onclick=()=>{ it.assignedTo.has(p.name)?it.assignedTo.delete(p.name):it.assignedTo.add(p.name); renderEd(); };
+        g.appendChild(b); });
+    });
+    const addI=el('button','btn btn-ghost btn-sm','+ Add a line'); addI.style.marginBottom='14px';
+    addI.onclick=()=>{ smart.items.push({name:'Item', qty:1, price:0, assignedTo:new Set()}); renderEd(); };
+    ed.appendChild(addI);
+
+    ed.appendChild(el('div','section-eyebrow','Charges — split across everyone with items'));
+    const ch=el('div','card'); ch.style.padding='4px 14px';
+    ch.innerHTML=`
+      <div class="split-row"><span class="name" style="flex:1">Delivery</span><div class="money-input" style="width:100px"><span class="sym" style="font-size:13px">£</span><input class="input" id="scDel" type="number" step="0.01" inputmode="decimal" value="${smart.delivery.toFixed(2)}" style="padding-left:22px;font-size:14px"></div></div>
+      <div class="split-row"><span class="name" style="flex:1">Service</span><div class="money-input" style="width:100px"><span class="sym" style="font-size:13px">£</span><input class="input" id="scSvc" type="number" step="0.01" inputmode="decimal" value="${smart.service.toFixed(2)}" style="padding-left:22px;font-size:14px"></div></div>`;
+    ed.appendChild(ch);
+    ch.querySelector('#scDel').onchange=e=>{ smart.delivery=Number(e.target.value)||0; renderEd(); };
+    ch.querySelector('#scSvc').onchange=e=>{ smart.service=Number(e.target.value)||0; renderEd(); };
+
+    const itemsSum=smart.items.reduce((s,it)=>s+(Number(it.price)||0),0);
+    const computed=itemsSum+smart.delivery+smart.service;
+    const diff=Math.round((smart.statedTotal-computed)*100)/100;
+    const mism = smart.statedTotal>0 && Math.abs(diff)>0.01;
+    const sum=el('div','split-summary '+(mism?'bad':'good'));
+    sum.innerHTML = mism
+      ? `<span>Scanned total ${money(smart.statedTotal)} ≠ items ${money(computed)} — check the numbers</span><span class="v num">${money(computed)}</span>`
+      : `<span>Total from items &amp; charges</span><span class="v num">${money(computed)}</span>`;
+    ed.appendChild(sum);
+
+    const pF=el('div','field'); pF.style.marginTop='16px'; pF.innerHTML='<label>Paid by</label><div class="people-grid" id="scPaid"></div>'; ed.appendChild(pF);
+    const drawPaid=()=>{ const g=pF.querySelector('#scPaid'); g.innerHTML=''; state.people.forEach(p=>{ const b=el('button','pchip'+(smart.paidBy===p.name?' on':'')); b.innerHTML=`${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`; b.onclick=()=>{smart.paidBy=p.name; drawPaid();}; g.appendChild(b); }); };
+    drawPaid();
+
+    const dF=el('div','field'); dF.innerHTML=`<label>Date</label><input class="input" id="scDate" type="date" value="${smart.date}" max="${todayISO()}">`; ed.appendChild(dF);
+    dF.querySelector('#scDate').onchange=e=>smart.date=e.target.value;
+    const tF=el('div','field'); tF.innerHTML=`<label>Tag <span class="hint">optional</span></label><input class="input" id="scTag" list="scTagList" autocomplete="off" value="${esc(smart.tag)}">${tagDatalist('scTagList')}`; ed.appendChild(tF);
+    tF.querySelector('#scTag').oninput=e=>smart.tag=e.target.value;
+
+    const involved=smartInvolved();
+    const nnote=el('div','note'); nnote.innerHTML=`<span class="ni">🧾</span><span>${involved.length} ${involved.length===1?'person':'people'} involved. A ${AI_CALL_PENCE}p scan charge each is added, owed to ${esc(API_PAYER)}.</span>`; ed.appendChild(nnote);
+
+    const sub=el('button','btn btn-primary btn-block', smartAllAssigned()?'Submit receipt':'Assign every item to submit'); sub.style.marginTop='4px';
+    sub.disabled = !smartAllAssigned() || !smart.paidBy;
+    sub.onclick=()=>submitReceipt(sub);
+    ed.appendChild(sub);
+    const over=el('button','btn btn-ghost btn-block','Start over'); over.style.marginTop='10px';
+    over.onclick=()=>{ smartReset(); renderAll(); };
+    ed.appendChild(over);
+  }
+  renderEd();
+  return wrap;
+}
+
+async function submitReceipt(btn){
+  const involved=smartInvolved();
+  if(!involved.length) return toast('Assign the items first','err');
+  const {split,total}=computeReceiptShares(smart.items, smart.delivery, smart.service, involved);
+  if(!(total>0)) return toast('Nothing to submit','err');
+  const desc = smart.items.map(it=>`${it.name} £${(Number(it.price)||0).toFixed(2)}`).join('; ')
+    + (smart.delivery?`; Delivery £${smart.delivery.toFixed(2)}`:'') + (smart.service?`; Service £${smart.service.toFixed(2)}`:'');
+  const main={ name:smart.name||'Receipt', total, description:desc, paidBy:smart.paidBy, split, type:'expense', tag:(smart.tag||'').trim(), ts:tsFromISO(smart.date) };
+  if(smart.image) main.receipt={ data:smart.image.data, name:'receipt.jpg', mimeType:smart.image.mimeType };
+  const feeEach=AI_CALL_PENCE/100; const feeSplit={}; involved.forEach(p=>feeSplit[p]=feeEach);
+  const payer = state.people.some(p=>p.name===API_PAYER)?API_PAYER:smart.paidBy;
+  const fee={ name:'AI receipt scan', total:Math.round(feeEach*involved.length*100)/100, description:`${AI_CALL_PENCE}p per person for the scan`, paidBy:payer, split:feeSplit, type:'expense', ts:tsFromISO(smart.date) };
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span> Saving…'; }
+  try{
+    await api('addExpense', main);
+    if(fee.total>0) await api('addExpense', fee);
+    smartReset(); await refresh(); toast('Receipt added'); state.tab='balances'; renderAll();
+  }catch(e){ toast(e.message,'err'); if(btn){ btn.disabled=false; btn.textContent='Submit receipt'; } }
 }
 
 /* ============================================================== *
@@ -1919,6 +2127,30 @@ function viewSettings(){
       else { state.settings.ntfyBase = base; if(token) state.settings.ntfyTokenSet=true; }
       toast(base?'Notifications on':'Notifications off'); renderAll();
     }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save & turn on'; }
+  };
+
+  // ---- AI receipt scanning ----
+  const aieb = el('div','section-eyebrow','AI receipt scanning'); aieb.style.marginTop='24px';
+  wrap.appendChild(aieb);
+  wrap.appendChild(el('div','page-sub','Powers the Scan tab. Paste an Anthropic API key so the app can read receipt photos.'));
+  const aicard = el('div','card'); aicard.style.padding='16px';
+  aicard.innerHTML = `
+    <div class="field" style="margin-bottom:10px"><label>Anthropic API key <span class="hint">${(state.settings&&state.settings.aiKeySet)?'✓ saved — leave blank to keep':'sk-ant-…'}</span></label>
+      <input class="input" id="aiKeyIn" type="password" autocomplete="off" placeholder="${(state.settings&&state.settings.aiKeySet)?'•••••••• (saved)':'sk-ant-...'}"></div>
+    <button class="btn btn-primary btn-block" id="saveAiKey">Save key</button>`;
+  wrap.appendChild(aicard);
+  const ainote = el('div','note');
+  ainote.innerHTML = `<span class="ni">🔑</span><span>The key is stored in your database and used from the browser, so treat the app link as sensitive. Set a low monthly spend limit in the Anthropic console to be safe. Scans cost a fraction of a penny each.</span>`;
+  wrap.appendChild(ainote);
+  aicard.querySelector('#saveAiKey').onclick = async ()=>{
+    const key = aicard.querySelector('#aiKeyIn').value.trim();
+    if(!key) return toast('Paste a key first','err');
+    const btn = aicard.querySelector('#saveAiKey'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+    try{
+      if(connected){ applyData(await api('setAiKey',{key})); }
+      else { state.settings.aiKey=key; state.settings.aiKeySet=true; }
+      toast('API key saved'); renderAll();
+    }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save key'; }
   };
 
   const eb = el('div','section-eyebrow','Saved places'); eb.style.marginTop='24px';
