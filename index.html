@@ -372,7 +372,7 @@ const SEED_PLACES = [
 ];
 const state = {
   people: SEED_PEOPLE.map((n,i)=>({name:n,color:PALETTE[i%PALETTE.length]})),
-  vehicles: [], quick: [], quickTrips: [], places: SEED_PLACES.slice(), expenses: [], settings: { fuelPence: 156 },
+  vehicles: [], quick: [], quickTrips: [], places: SEED_PLACES.slice(), expenses: [], recurring: [], settings: { fuelPence: 156 },
   me: null, tab: 'balances', tagFilter: null, connected: false, loading: false
 };
 const fuelPence = () => (state.settings && state.settings.fuelPence) || 156;
@@ -397,23 +397,103 @@ const avatar = (name, size='sm') => `<span class="av ${size}" style="background:
 const todayISO = () => { const d=new Date(), z=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`; };
 const tsFromISO = iso => { if(!iso) return Date.now(); const [y,m,d]=iso.split('-').map(Number); return new Date(y,(m||1)-1,d||1,12,0,0).getTime(); };
 const fmtDate = ts => new Date(ts).toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+
+/* ---- Standing orders / recurring payments ---- */
+const STANDING_MARKER = '🔁 Standing order (simulated)';
+const WEEKDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const REPEATS = [
+  {v:'w1', label:'Weekly',         freq:'weekly',  interval:1},
+  {v:'w2', label:'Fortnightly',    freq:'weekly',  interval:2},
+  {v:'w4', label:'Every 4 weeks',  freq:'weekly',  interval:4},
+  {v:'m1', label:'Monthly',        freq:'monthly', interval:1},
+  {v:'m2', label:'Every 2 months', freq:'monthly', interval:2},
+  {v:'m3', label:'Quarterly',      freq:'monthly', interval:3},
+  {v:'m6', label:'Every 6 months', freq:'monthly', interval:6},
+  {v:'m12',label:'Yearly',         freq:'monthly', interval:12},
+];
+const repeatOf = v => REPEATS.find(x=>x.v===v) || REPEATS[3];
+const repeatV = r => { const x=REPEATS.find(x=>x.freq===r.freq && x.interval===r.interval); return x?x.v:(r.freq==='weekly'?'w1':'m1'); };
+const isoOf = d => { const z=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`; };
+const parseISO = s => new Date(s+'T12:00:00');
+const addDays = (d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+const daysInMonth = (y,m)=> new Date(y,m+1,0).getDate();
+function addMonths(y,m,n){ let mm=m+n, yy=y+Math.floor(mm/12); mm=((mm%12)+12)%12; return [yy,mm]; }
+function domDate(y,m,dom){ const dim=daysInMonth(y,m); return new Date(y,m, dom===0?dim:Math.min(dom,dim), 12); }
+function nthWeekdayOfMonth(y,m,pos,weekday){
+  if(pos===0){ let d=new Date(y,m,daysInMonth(y,m),12); while(d.getDay()!==weekday) d=addDays(d,-1); return d; }
+  let d=new Date(y,m,1,12), count=0;
+  while(d.getMonth()===m){ if(d.getDay()===weekday){ count++; if(count===pos) return d; } d=addDays(d,1); }
+  return nthWeekdayOfMonth(y,m,0,weekday);
+}
+function monthlyOccurrence(y,m,rule){ return rule.dayMode==='dow' ? nthWeekdayOfMonth(y,m,rule.weekPos,rule.weekday) : domDate(y,m,rule.dayOfMonth); }
+function firstDue(rule, floor){
+  floor = floor || rule.start;
+  if(rule.freq==='weekly'){ let d=parseISO(rule.start); let guard=0; while(isoOf(d)<floor && guard++<520) d=addDays(d,7*(rule.interval||1)); return isoOf(d); }
+  let b=parseISO(rule.start), y=b.getFullYear(), m=b.getMonth(), occ=monthlyOccurrence(y,m,rule), guard=0;
+  while(isoOf(occ)<floor && guard++<240){ [y,m]=addMonths(y,m,rule.interval||1); occ=monthlyOccurrence(y,m,rule); }
+  return isoOf(occ);
+}
+function advanceRule(rule){
+  if(rule.endMode==='count' && (rule.runsDone+1) >= rule.endCount) return null;
+  const cur=parseISO(rule.nextDue); let nextIso;
+  if(rule.freq==='weekly'){ nextIso=isoOf(addDays(cur,7*(rule.interval||1))); }
+  else { let [y,m]=addMonths(cur.getFullYear(),cur.getMonth(),rule.interval||1); nextIso=isoOf(monthlyOccurrence(y,m,rule)); }
+  if(rule.endMode==='date' && rule.endDate && nextIso>rule.endDate) return null;
+  return nextIso;
+}
+const ordinal = n => { const s=['th','st','nd','rd'], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); };
+function repeatLabel(freq,interval){
+  if(freq==='weekly') return interval===1?'weekly':interval===2?'fortnightly':`every ${interval} weeks`;
+  return interval===1?'monthly':interval===3?'quarterly':interval===12?'yearly':`every ${interval} months`;
+}
+function dayRuleLabel(r){
+  if(r.freq==='weekly') return 'on '+WEEKDAYS[r.weekday!=null?r.weekday:parseISO(r.start).getDay()];
+  if(r.dayMode==='dow'){ const pos=r.weekPos===0?'last':ordinal(r.weekPos); return `on the ${pos} ${WEEKDAYS[r.weekday]}`; }
+  return `on the ${r.dayOfMonth===0?'last day':ordinal(r.dayOfMonth)}`;
+}
+function fmtLong(iso){ if(!iso) return ''; const d=parseISO(iso); return d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); }
+function ruleSummary(r){ return `${repeatLabel(r.freq,r.interval)}, ${dayRuleLabel(r)}`; }
+function ruleObj(rc){ const r=repeatOf(rc.repeat); return { freq:r.freq, interval:r.interval, dayMode:rc.dayMode, dayOfMonth:rc.dayOfMonth, weekPos:rc.weekPos, weekday: r.freq==='weekly'?parseISO(rc.start).getDay():rc.weekday, start:rc.start, endMode:rc.endMode, endDate:rc.endDate, endCount:rc.endCount, runsDone:0, nextDue:null }; }
 // true when an expense/transfer creates a debt between a and b
 const involvesPair = (x,a,b) => { const sp=x.split||{}; return (x.paidBy===a && sp[b]!=null) || (x.paidBy===b && sp[a]!=null); };
 
 /* ---------------- Backend (Supabase) ---------------- */
 const normSplit = v => (Array.isArray(v) ? v : 'all');
+function ruleFromPayload(p){ return { freq:p.freq, interval:p.interval, dayMode:p.dayMode, dayOfMonth:p.dayOfMonth, weekPos:p.weekPos, weekday:p.weekday, start:p.start, endMode:p.endMode, endDate:p.endDate, endCount:p.endCount, runsDone:0, nextDue:null }; }
+
+// Apply any standing orders that have come due — one run per rule, once per app open.
+let standingProcessed = false;
+async function runDueStandingOrders(){
+  if(standingProcessed || !connected || !sb) return;
+  standingProcessed = true;
+  const today = todayISO();
+  let created = 0;
+  for(const r of (state.recurring||[])){
+    if(!r.active || !r.nextDue || r.nextDue > today) continue;
+    const next = advanceRule(r);
+    const claim = await sb.from('recurring').update({ next_due: next, runs_done:(r.runsDone||0)+1, active: !!next }).eq('id', r.id).eq('next_due', r.nextDue).select();
+    if(claim.data && claim.data.length){
+      try{
+        await api('addExpense', { name:`${r.from} → ${r.to}`, total:r.amount, paidBy:r.from, split:{[r.to]:r.amount}, type:'transfer', description:STANDING_MARKER, ts: tsFromISO(r.nextDue) });
+        created++;
+      }catch(e){}
+    }
+  }
+  if(created){ await refresh(); toast(`${created} standing order${created>1?'s':''} applied`); }
+}
 
 async function fetchAllData(){
-  const [pe,ve,qe,qt,pl,ex,se] = await Promise.all([
+  const [pe,ve,qe,qt,pl,ex,se,rc] = await Promise.all([
     sb.from('people').select('*').order('id'),
     sb.from('vehicles').select('*').order('name'),
     sb.from('quick_expenses').select('*').order('id'),
     sb.from('quick_trips').select('*').order('id'),
     sb.from('places').select('*').order('id'),
     sb.from('expenses').select('*'),
-    sb.from('settings').select('*')
+    sb.from('settings').select('*'),
+    sb.from('recurring').select('*').order('id')
   ]);
-  const err = pe.error||ve.error||qe.error||qt.error||pl.error||ex.error||se.error;
+  const err = pe.error||ve.error||qe.error||qt.error||pl.error||ex.error||se.error||rc.error;
   if(err) throw new Error(err.message || 'Supabase read failed');
   const S={}; (se.data||[]).forEach(r=> S[r.key]=r.value);
   return {
@@ -423,6 +503,7 @@ async function fetchAllData(){
     quickTrips: (qt.data||[]).map(q=>({label:q.label, emoji:q.emoji||'🚗', origin:q.origin, destination:q.destination, vehicle:q.vehicle||'', mpg:Number(q.mpg)||0, roundTrip:!!q.round_trip, split:normSplit(q.split)})),
     places: (pl.data||[]).map(p=>({label:p.label, address:p.address})),
     expenses: (ex.data||[]).map(x=>({id:x.id, ts:new Date(x.ts).getTime(), name:x.name, description:x.description||'', paidBy:x.paid_by, total:Number(x.total)||0, type:x.type||'expense', split:x.split||{}, receiptUrl:x.receipt_url||'', tag:x.tag||''})),
+    recurring: (rc.data||[]).map(r=>({ id:r.id, from:r.from_person, to:r.to_person, amount:Number(r.amount)||0, freq:r.freq, interval:Number(r.interval)||1, dayMode:r.day_mode, dayOfMonth:r.day_of_month, weekPos:r.week_pos, weekday:r.weekday, start:r.start_date, endMode:r.end_mode, endDate:r.end_date, endCount:r.end_count, nextDue:r.next_due, runsDone:Number(r.runs_done)||0, active:r.active!==false })),
     settings: { fuelPence:Number(S.fuelPence)||156, ntfyBase:S.ntfyBase||'', ntfyServer:S.ntfyServer||'https://ntfy.sh', ntfyToken:S.ntfyToken||'', ntfyTokenSet: !!S.ntfyToken, aiKey:S.aiKey||'', aiKeySet: !!S.aiKey }
   };
 }
@@ -618,6 +699,18 @@ async function api(action, payload){
       sbThrow((await sb.from('settings').upsert({key:'aiKey', value:String(payload.key||'').trim()})).error);
       return refetch();
     }
+    case 'addRecurring': {
+      const p=payload; const rule=ruleFromPayload(p); const next=firstDue(rule, p.start);
+      sbThrow((await sb.from('recurring').insert({ from_person:p.from, to_person:p.to, amount:Number(p.amount)||0, freq:p.freq, interval:p.interval, day_mode:p.dayMode, day_of_month:p.dayOfMonth, week_pos:p.weekPos, weekday:p.weekday, start_date:p.start, end_mode:p.endMode, end_date:p.endDate||null, end_count:p.endCount||null, next_due:next, runs_done:0, active:true })).error);
+      return refetch();
+    }
+    case 'updateRecurring': {
+      const p=payload; const rule=ruleFromPayload(p); const next=firstDue(rule, todayISO());
+      sbThrow((await sb.from('recurring').update({ from_person:p.from, to_person:p.to, amount:Number(p.amount)||0, freq:p.freq, interval:p.interval, day_mode:p.dayMode, day_of_month:p.dayOfMonth, week_pos:p.weekPos, weekday:p.weekday, start_date:p.start, end_mode:p.endMode, end_date:p.endDate||null, end_count:p.endCount||null, next_due:next, active:true }).eq('id', p.id)).error);
+      return refetch();
+    }
+    case 'deleteRecurring': sbThrow((await sb.from('recurring').delete().eq('id', payload.id)).error); return refetch();
+
     case 'calcTrip': return calcTripClient(payload);
     default: throw new Error('Unknown action: '+action);
   }
@@ -650,13 +743,14 @@ function applyData(d){
   if(d.places) state.places = d.places;
   if(d.settings) state.settings = d.settings;
   state.expenses = (d.expenses||[]).sort((a,b)=>b.ts-a.ts);
+  state.recurring = d.recurring || [];
   if(state.me && !state.people.some(p=>p.name===state.me)) state.me = null;
 }
 async function refresh(){
   if(!connected) return;
   try{ state.loading=true; const d = await api('getData'); state.connected=true; applyData(d); }
   catch(e){ state.connected=false; toast(e.message,'err'); }
-  finally{ state.loading=false; renderAll(); }
+  finally{ state.loading=false; renderAll(); runDueStandingOrders(); }
 }
 
 /* ---------------- Toast ---------------- */
@@ -894,10 +988,13 @@ function viewBalances(){
   wrap.appendChild(card);
 
   if(state.people.length>1){
-    const pay = el('button','btn btn-ghost btn-block','💸  Record a payment');
-    pay.style.marginBottom='18px';
+    const btns = el('div'); btns.style.cssText='display:flex;gap:10px;margin-bottom:18px';
+    const pay = el('button','btn btn-ghost','💸  Record a payment'); pay.style.flex='1';
     pay.onclick = ()=>transferSheet({});
-    wrap.appendChild(pay);
+    const so = el('button','btn btn-ghost','🔁  Standing orders'); so.style.flex='1';
+    so.onclick = ()=>standingOrdersSheet();
+    btns.appendChild(pay); btns.appendChild(so);
+    wrap.appendChild(btns);
   }
   wrap.appendChild(el('div','section-eyebrow','Person by person'));
   const list = el('div','card');
@@ -1041,6 +1138,150 @@ function transferSheet(opts){
         closeSheet(); toast('Payment recorded'); state.tab='balances'; renderAll();
       }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Record payment'; }
     };
+  });
+}
+
+/* ---- Standing orders / recurring payments ---- */
+function standingOrdersSheet(){
+  openSheet(s=>{
+    s.appendChild(el('h2',null,'Standing orders'));
+    s.appendChild(el('p','desc','Simulated recurring payments. Each applies automatically when its date arrives — no real money moves.'));
+    const rules = state.recurring||[];
+    if(!rules.length){ s.appendChild(emptyState('🔁','None set up','Mirror a real standing order or direct debit so balances update on their own.')); }
+    else {
+      const list=el('div','card'); list.style.padding='4px 14px';
+      rules.forEach(r=>{
+        const row=el('div','act-row');
+        row.innerHTML=`<div class="act-ic">🔁</div>
+          <div class="act-main"><div class="at">${esc(r.from)} → ${esc(r.to)} · ${money(r.amount)}</div>
+          <div class="am">${ruleSummary(r)} · next ${fmtLong(r.nextDue)}</div></div>
+          <button class="btn btn-ghost btn-sm rcEdit">Edit</button>`;
+        row.querySelector('.rcEdit').onclick=()=>{ closeSheet(); recurringEditorSheet(r); };
+        list.appendChild(row);
+      });
+      s.appendChild(list);
+    }
+    const add=el('button','btn btn-primary btn-block','+ New standing order'); add.style.marginTop='12px';
+    add.onclick=()=>{ closeSheet(); recurringEditorSheet(null); };
+    s.appendChild(add);
+  });
+}
+
+function recurringEditorSheet(existing){
+  const rc = existing ? {
+    id:existing.id, from:existing.from, to:existing.to, amount:existing.amount,
+    repeat:repeatV(existing), dayMode:existing.dayMode||'dow', dayOfMonth:existing.dayOfMonth||1,
+    weekPos:existing.weekPos!=null?existing.weekPos:3, weekday:existing.weekday!=null?existing.weekday:0,
+    start:existing.start, endMode:existing.endMode||'never', endDate:existing.endDate||'', endCount:existing.endCount||12
+  } : {
+    id:null, from:state.me, to:null, amount:'', repeat:'m1', dayMode:'dow', dayOfMonth:1, weekPos:3, weekday:0,
+    start:todayISO(), endMode:'never', endDate:'', endCount:12
+  };
+  function deriveFromStart(){ const d=parseISO(rc.start); rc.dayOfMonth=d.getDate(); rc.weekday=d.getDay(); rc.weekPos=Math.min(4,Math.ceil(d.getDate()/7)); }
+  if(!existing) deriveFromStart();
+
+  openSheet(s=>{
+    s.appendChild(el('h2',null, existing?'Edit standing order':'New standing order'));
+    s.appendChild(el('p','desc','Enter exactly what your bank shows. It runs automatically on each date — no real money moves.'));
+    const box=el('div'); s.appendChild(box);
+    function render(){
+      box.innerHTML='';
+      const ft=el('div','field'); ft.innerHTML='<label>From → To</label>';
+      const grid=el('div'); grid.style.cssText='display:flex;gap:8px;align-items:center';
+      const fromSel=el('select','input'); fromSel.innerHTML=state.people.map(p=>`<option ${rc.from===p.name?'selected':''}>${esc(p.name)}</option>`).join('');
+      fromSel.onchange=e=>{ rc.from=e.target.value; if(rc.to===rc.from) rc.to=null; render(); };
+      const arrow=el('span',null,'→'); arrow.style.cssText='color:var(--brand);font-weight:700;font-size:18px';
+      const toSel=el('select','input'); toSel.innerHTML='<option value="">To…</option>'+state.people.filter(p=>p.name!==rc.from).map(p=>`<option ${rc.to===p.name?'selected':''}>${esc(p.name)}</option>`).join('');
+      toSel.onchange=e=>{ rc.to=e.target.value||null; };
+      grid.appendChild(fromSel); grid.appendChild(arrow); grid.appendChild(toSel);
+      ft.appendChild(grid); box.appendChild(ft);
+
+      const amt=el('div','field'); amt.innerHTML=`<label>Amount</label><div class="money-input"><span class="sym">£</span><input class="input" id="rcAmt" type="number" step="0.01" inputmode="decimal" placeholder="0.00" value="${rc.amount!==''?rc.amount:''}" style="padding-left:30px;font-family:var(--display);font-size:18px;font-weight:600"></div>`;
+      box.appendChild(amt); amt.querySelector('#rcAmt').oninput=e=>rc.amount=e.target.value;
+
+      const rep=el('div','field'); rep.innerHTML=`<label>Repeats</label><select class="input" id="rcRep">${REPEATS.map(x=>`<option value="${x.v}" ${rc.repeat===x.v?'selected':''}>${x.label}</option>`).join('')}</select>`;
+      box.appendChild(rep); rep.querySelector('#rcRep').onchange=e=>{ rc.repeat=e.target.value; render(); };
+      const rObj=repeatOf(rc.repeat);
+
+      const st=el('div','field'); st.innerHTML=`<label>Start date <span class="hint">first payment</span></label><input class="input" id="rcStart" type="date" min="${todayISO()}" value="${rc.start}">`;
+      box.appendChild(st); st.querySelector('#rcStart').onchange=e=>{ rc.start=e.target.value; deriveFromStart(); render(); };
+
+      if(rObj.freq==='monthly'){
+        const on=el('div','field'); on.innerHTML=`<label>On</label>
+          <div class="seg" id="rcMode"><button data-m="dow" class="${rc.dayMode==='dow'?'active':''}">A weekday</button><button data-m="dom" class="${rc.dayMode==='dom'?'active':''}">A date</button></div>
+          <div id="rcOn" style="margin-top:10px"></div>`;
+        box.appendChild(on);
+        on.querySelector('#rcMode').onclick=e=>{ const b=e.target.closest('button'); if(!b)return; rc.dayMode=b.dataset.m; render(); };
+        const onBox=on.querySelector('#rcOn');
+        if(rc.dayMode==='dow'){
+          onBox.innerHTML=`<div style="display:flex;gap:8px">
+            <select class="input" id="rcPos">${[['1','1st'],['2','2nd'],['3','3rd'],['4','4th'],['0','last']].map(([v,l])=>`<option value="${v}" ${String(rc.weekPos)===v?'selected':''}>${l}</option>`).join('')}</select>
+            <select class="input" id="rcWd">${WEEKDAYS.map((w,i)=>`<option value="${i}" ${rc.weekday===i?'selected':''}>${w}</option>`).join('')}</select></div>`;
+          onBox.querySelector('#rcPos').onchange=e=>rc.weekPos=Number(e.target.value);
+          onBox.querySelector('#rcWd').onchange=e=>rc.weekday=Number(e.target.value);
+        } else {
+          onBox.innerHTML=`<select class="input" id="rcDom">${Array.from({length:31},(_,i)=>i+1).map(d=>`<option value="${d}" ${rc.dayOfMonth===d?'selected':''}>${ordinal(d)}</option>`).join('')}<option value="0" ${rc.dayOfMonth===0?'selected':''}>last day</option></select>`;
+          onBox.querySelector('#rcDom').onchange=e=>rc.dayOfMonth=Number(e.target.value);
+        }
+      }
+
+      const end=el('div','field'); end.innerHTML=`<label>Ends</label>
+        <div class="seg" id="rcEnd"><button data-e="never" class="${rc.endMode==='never'?'active':''}">Never</button><button data-e="date" class="${rc.endMode==='date'?'active':''}">On date</button><button data-e="count" class="${rc.endMode==='count'?'active':''}">After N</button></div>
+        <div id="rcEndDetail" style="margin-top:10px"></div>`;
+      box.appendChild(end);
+      end.querySelector('#rcEnd').onclick=e=>{ const b=e.target.closest('button'); if(!b)return; rc.endMode=b.dataset.e; render(); };
+      const edet=end.querySelector('#rcEndDetail');
+      if(rc.endMode==='date'){ edet.innerHTML=`<input class="input" id="rcEndDate" type="date" min="${rc.start}" value="${rc.endDate||''}">`; edet.querySelector('#rcEndDate').onchange=e=>rc.endDate=e.target.value; }
+      else if(rc.endMode==='count'){ edet.innerHTML=`<input class="input" id="rcEndCount" type="number" min="1" step="1" value="${rc.endCount||12}"><div class="hint" style="margin-top:6px">Total number of payments</div>`; edet.querySelector('#rcEndCount').oninput=e=>rc.endCount=Number(e.target.value)||1; }
+
+      const rule=ruleObj(rc); const nd=firstDue(rule, rc.start);
+      const prev=el('div','split-summary good'); prev.innerHTML=`<span>First payment ${fmtLong(nd)}</span><span class="v num">${rc.amount?money(Number(rc.amount)):''}</span>`;
+      box.appendChild(prev);
+
+      const btn=el('button','btn btn-primary btn-block', existing?'Review & save':'Review & set up'); btn.style.marginTop='6px';
+      btn.onclick=()=>confirmRecurring(rc, existing);
+      box.appendChild(btn);
+
+      if(existing){
+        const del=el('button','btn btn-block','Delete this standing order');
+        del.style.cssText='margin-top:10px;color:var(--neg);background:var(--neg-soft)';
+        del.onclick=async ()=>{ del.disabled=true; del.innerHTML='<span class="spin"></span>'; try{ applyData(await api('deleteRecurring',{id:existing.id})); closeSheet(); toast('Standing order deleted'); renderAll(); }catch(e){ toast(e.message,'err'); del.disabled=false; del.textContent='Delete this standing order'; } };
+        box.appendChild(el('div',null,'<div style="font-size:12px;color:var(--faint);text-align:center;margin-top:10px">Deleting stops future runs — payments already made stay in history.</div>'));
+        box.appendChild(del);
+      }
+    }
+    render();
+  });
+}
+
+function confirmRecurring(rc, existing){
+  if(!rc.to) return toast('Choose who it goes to','err');
+  if(rc.from===rc.to) return toast('From and to must be different','err');
+  if(!(Number(rc.amount)>0)) return toast('Enter an amount','err');
+  if(rc.start < todayISO()) return toast('Start date must be today or later','err');
+  const r=ruleObj(rc);
+  openSheet(s=>{
+    s.appendChild(el('h2',null,'Before you set this up'));
+    const warn=el('div','note'); warn.style.cssText='background:#FCEBE9;border:1px solid #E5564B55;margin-top:2px';
+    warn.innerHTML=`<span class="ni">⚠️</span><span><b>This does not move any real money.</b> It only simulates the payment in the app on each date. Make sure the real standing order or direct debit is set up in your bank, keep an eye that balances change as you expect, and if you ever cancel the real one, delete it here too.</span>`;
+    s.appendChild(warn);
+    const sumC=el('div','card'); sumC.style.cssText='padding:16px;margin:14px 0;text-align:center';
+    sumC.innerHTML=`<div class="num" style="font-size:28px;font-weight:700">${money(Number(rc.amount))}</div>
+      <div style="margin-top:6px;font-weight:600">${esc(rc.from)} → ${esc(rc.to)}</div>
+      <div style="color:var(--muted);font-size:13px;margin-top:4px">${ruleSummary(r)}</div>
+      <div style="color:var(--faint);font-size:12.5px;margin-top:3px">from ${fmtLong(firstDue(r, rc.start))}${rc.endMode==='date'?' until '+fmtLong(rc.endDate):rc.endMode==='count'?` · ${rc.endCount} payments`:' · no end date'}</div>`;
+    s.appendChild(sumC);
+    const btn=el('button','btn btn-primary btn-block','I understand — set it up');
+    btn.onclick=async ()=>{
+      btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+      const payload={ id:rc.id, from:rc.from, to:rc.to, amount:Number(rc.amount), freq:r.freq, interval:r.interval, dayMode:r.dayMode, dayOfMonth:r.dayOfMonth, weekPos:r.weekPos, weekday:r.weekday, start:rc.start, endMode:rc.endMode, endDate:rc.endMode==='date'?rc.endDate:null, endCount:rc.endMode==='count'?rc.endCount:null };
+      try{ applyData(await api(existing?'updateRecurring':'addRecurring', payload)); closeSheet(); toast(existing?'Standing order updated':'Standing order set up'); renderAll(); }
+      catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='I understand — set it up'; }
+    };
+    s.appendChild(btn);
+    const back=el('button','btn btn-ghost btn-block','Go back'); back.style.marginTop='10px';
+    back.onclick=()=>recurringEditorSheet(existing);
+    s.appendChild(back);
   });
 }
 
@@ -2266,6 +2507,7 @@ function viewActivity(){
   } else {
     shown.forEach(x=>{
       const youPaid = x.paidBy===state.me;
+      const isSO = x.type==='transfer' && (x.description||'').indexOf('Standing order')!==-1;
       const row = el('div','act-row');
       const ds = fmtDate(x.ts);
       const tagPill = (x.tag && !state.tagFilter) ? ` <span class="tag-pill">#${esc(x.tag)}</span>` : '';
@@ -2273,14 +2515,14 @@ function viewActivity(){
       if(x.type==='transfer'){
         const to = Object.keys(x.split||{})[0]||'';
         const label = youPaid ? `You paid ${esc(to)}` : (to===state.me ? `${esc(x.paidBy)} paid you` : `${esc(x.paidBy)} paid ${esc(to)}`);
-        meta = `${label} · ${ds}`;
-        right = `<div class="tot num">${money(x.total)}</div><div class="yr">payment</div>`;
+        meta = `${label} · ${ds}${isSO?' · 🔁 standing order':''}`;
+        right = `<div class="tot num">${money(x.total)}</div><div class="yr">${isSO?'standing order':'payment'}</div>`;
       } else {
         const yourShare = (x.split&&x.split[state.me])||0;
         meta = `${youPaid?'You':esc(x.paidBy)} paid · ${ds}${x.receiptUrl?' · 📎':''}`;
         right = `<div class="tot num">${money(x.total)}</div><div class="yr">${yourShare?('your share '+money(yourShare)):'not in split'}</div>`;
       }
-      row.innerHTML = `<div class="act-ic">${typeIcon(x)}</div>
+      row.innerHTML = `<div class="act-ic">${isSO?'🔁':typeIcon(x)}</div>
         <div class="act-main"><div class="at">${esc(x.name)}${tagPill}</div>
           <div class="am">${meta}</div></div>
         <div class="act-right">${right}</div>`;
@@ -2297,8 +2539,9 @@ function expenseDetailSheet(x){
     const date = new Date(x.ts).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'long'});
     if(isT){
       const to = Object.keys(x.split||{})[0]||'';
-      s.appendChild(el('h2',null,'Payment'));
-      s.appendChild(el('p','desc',date));
+      const isSO = (x.description||'').indexOf('Standing order')!==-1;
+      s.appendChild(el('h2',null, isSO?'🔁 Standing order':'Payment'));
+      s.appendChild(el('p','desc', isSO ? 'Auto-created · '+date+' · simulated, no real money moved' : date));
       const box = el('div','card'); box.style.cssText='padding:16px;margin-bottom:4px;display:flex;align-items:center;gap:12px;justify-content:center';
       box.innerHTML = `${avatar(x.paidBy,'md')}<div style="font-weight:600">${esc(x.paidBy)}</div>
         <div style="color:var(--brand);font-size:20px">→</div>
@@ -2307,7 +2550,7 @@ function expenseDetailSheet(x){
       const amt = el('div'); amt.style.cssText='text-align:center;margin:14px 0';
       amt.innerHTML = `<div class="num" style="font-size:32px;font-weight:700">${money(x.total)}</div>`;
       s.appendChild(amt);
-      if(x.description){ const d=el('div','card'); d.style.cssText='padding:13px 15px;margin-bottom:8px;font-size:14px;color:var(--ink-soft)'; d.textContent=x.description; s.appendChild(d); }
+      if(x.description && !isSO){ const d=el('div','card'); d.style.cssText='padding:13px 15px;margin-bottom:8px;font-size:14px;color:var(--ink-soft)'; d.textContent=x.description; s.appendChild(d); }
     } else {
       s.appendChild(el('h2',null,esc(x.name)));
       s.appendChild(el('p','desc',`${esc(x.paidBy)} paid ${money(x.total)} · ${date}`));
