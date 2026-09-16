@@ -1,263 +1,2634 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Kunky Central</title>
-<meta name="description" content="Everything Kunky in one place — Money, Film, Calendar and Quiz.">
-
-<!-- ===== Home-screen icon (iOS / Safari) ===== -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Kunky">
-
-<!-- ===== Icons (Android / desktop / browser tab) ===== -->
-<link rel="icon" href="favicon.ico" sizes="any">
-<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-<link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#0a0a0c">
-
-<!-- ===== Link previews ===== -->
-<meta property="og:title" content="Kunky Central">
-<meta property="og:description" content="Everything Kunky in one place.">
-<meta property="og:image" content="icon-512.png">
-<meta name="twitter:card" content="summary">
-
+<title>The Kunky Economy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
 <style>
-  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-
   :root{
-    --bg:#0a0a0c;
-    --panel:rgba(255,255,255,.035);
-    --panel-hi:rgba(255,255,255,.06);
-    --line:rgba(255,255,255,.09);
-    --text:#f4f4f6;
-    --muted:#8b8b96;
-    --money:#22c55e;
-    --film:#f59e0b;
-    --cal:#38bdf8;
-    --quiz:#8b5cf6;
-    --radius:20px;
+    --ink:#181B23; --ink-soft:#3A3F4B; --muted:#717784; --faint:#9AA0AC;
+    --canvas:#EEF1F4; --card:#FFFFFF; --line:#E4E7EC; --line-soft:#EEF0F3;
+    --brand:#0E7C66; --brand-ink:#0A5C4C;
+    --pos:#1DAA6B; --pos-soft:#E6F6EF;
+    --neg:#E5564B; --neg-soft:#FCEBE9;
+    --shadow:0 1px 2px rgba(16,24,40,.04), 0 8px 24px rgba(16,24,40,.06);
+    --shadow-lg:0 12px 40px rgba(16,24,40,.16);
+    --r:16px; --r-sm:11px; --r-lg:22px;
+    --display:'Space Grotesk',system-ui,sans-serif;
+    --body:'Inter',system-ui,sans-serif;
   }
-
-  html{-webkit-text-size-adjust:100%;background:var(--bg)}
-
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
   body{
-    background:var(--bg);
-    color:var(--text);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
-    line-height:1.5;
-    min-height:100dvh;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    padding:calc(clamp(28px,7vw,72px) + env(safe-area-inset-top)) 20px calc(40px + env(safe-area-inset-bottom));
+    font-family:var(--body); color:var(--ink); background:var(--canvas);
+    -webkit-font-smoothing:antialiased; line-height:1.45;
     overflow-x:hidden;
   }
+  .num{font-family:var(--display); font-feature-settings:"tnum" 1; letter-spacing:-.01em}
+  button{font-family:inherit; cursor:pointer; border:none; background:none; color:inherit}
+  input,textarea,select{font-family:inherit; font-size:16px; color:var(--ink)}
+  :focus-visible{outline:2px solid var(--brand); outline-offset:2px; border-radius:6px}
+  ::selection{background:#0E7C6633}
 
-  /* ambient glow */
-  body::before{
-    content:"";
-    position:fixed;
-    inset:-30% -10% auto -10%;
-    height:70vh;
-    background:
-      radial-gradient(45% 60% at 12% 30%, rgba(34,197,94,.16), transparent 70%),
-      radial-gradient(45% 60% at 40% 8%,  rgba(245,158,11,.14), transparent 70%),
-      radial-gradient(45% 60% at 68% 32%, rgba(139,92,246,.18), transparent 70%),
-      radial-gradient(45% 60% at 92% 12%, rgba(56,189,248,.15), transparent 70%);
-    filter:blur(30px);
-    pointer-events:none;
-    z-index:0;
+  /* ---------- App frame ---------- */
+  #app{max-width:560px; margin:0 auto; min-height:100dvh; display:flex; flex-direction:column}
+
+  .topbar{
+    position:sticky; top:0; z-index:30; background:rgba(238,241,244,.85);
+    backdrop-filter:saturate(1.4) blur(12px); -webkit-backdrop-filter:saturate(1.4) blur(12px);
+    padding:14px 18px 12px; display:flex; align-items:center; gap:12px;
+    border-bottom:1px solid var(--line);
   }
+  .wordmark{font-family:var(--display); font-weight:700; font-size:17px; letter-spacing:-.02em; display:flex; align-items:center; gap:8px; white-space:nowrap}
+  .wordmark .dot{width:10px; height:10px; border-radius:50%; background:var(--brand); box-shadow:0 0 0 4px #0E7C6622}
+  .topbar .spacer{flex:1}
+  .me-chip{display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line);
+    padding:5px 11px 5px 5px; border-radius:999px; font-weight:600; font-size:13px; box-shadow:var(--shadow)}
+  .me-chip:active{transform:scale(.97)}
+  .icon-btn{width:38px; height:38px; border-radius:50%; background:var(--card); border:1px solid var(--line); display:grid; place-items:center; color:var(--muted); box-shadow:var(--shadow)}
+  .icon-btn svg{width:19px; height:19px}
+  .icon-btn:active{transform:scale(.95)}
+  .icon-btn.active{color:var(--brand); border-color:var(--brand)}
+  .note{display:flex; gap:9px; align-items:flex-start; background:#0E7C6608; border:1px solid #0E7C6622; border-radius:var(--r-sm); padding:11px 13px; font-size:12.5px; color:var(--ink-soft); line-height:1.5; margin-top:14px}
+  .note .ni{flex:none; font-size:14px; line-height:1.3}
+  .tag-pill{display:inline-flex; align-items:center; gap:5px; background:#8B5CF614; color:#6D28D9; border:1px solid #8B5CF633; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:600; vertical-align:middle}
+  .tag-pill .x{font-size:11px; opacity:.7}
+  .chip-scroll{display:flex; gap:8px; overflow-x:auto; padding:2px 0 10px; margin:0 -18px 4px; padding-left:18px; padding-right:18px; -webkit-overflow-scrolling:touch; scrollbar-width:none}
+  .chip-scroll::-webkit-scrollbar{display:none}
+  .fchip{flex:none; padding:7px 14px; border-radius:999px; border:1px solid var(--line); background:var(--card); font-size:13px; font-weight:600; color:var(--muted); white-space:nowrap; box-shadow:var(--shadow)}
+  .fchip.on{background:var(--ink); color:#fff; border-color:var(--ink)}
 
-  .wrap{width:100%;max-width:760px;position:relative;z-index:1}
+  main{flex:1; padding:18px 18px 110px}
 
-  header{text-align:center;margin-bottom:clamp(28px,6vw,44px)}
+  /* ---------- Connection banner ---------- */
+  .conn{background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:14px 16px; margin-bottom:16px; box-shadow:var(--shadow)}
+  .conn.ok{border-color:#1DAA6B55; background:var(--pos-soft)}
+  .conn-head{display:flex; align-items:center; gap:10px; cursor:pointer}
+  .conn-head h3{font-size:14px; font-weight:600}
+  .conn-head .status{margin-left:auto; font-size:12px; font-weight:600; color:var(--muted); display:flex; align-items:center; gap:6px}
+  .conn-head .status .led{width:8px; height:8px; border-radius:50%; background:var(--neg)}
+  .conn.ok .status .led{background:var(--pos)}
+  .conn-body{margin-top:12px}
+  .conn p{font-size:13px; color:var(--muted); margin-bottom:10px; line-height:1.5}
+  .conn .row{display:flex; gap:8px}
+  .conn input{flex:1; padding:11px 13px; border:1px solid var(--line); border-radius:var(--r-sm); background:#fff}
 
-  .mark{
-    width:84px;height:84px;
-    border-radius:22px;
-    display:block;
-    margin:0 auto 20px;
-    box-shadow:0 12px 40px rgba(0,0,0,.5), 0 0 0 1px var(--line);
-  }
+  /* ---------- Avatars ---------- */
+  .av{display:inline-flex; align-items:center; justify-content:center; border-radius:50%; color:#fff;
+    font-weight:600; font-family:var(--body); flex:none; line-height:1}
+  .av.sm{width:30px; height:30px; font-size:12px}
+  .av.md{width:40px; height:40px; font-size:15px}
+  .av.lg{width:58px; height:58px; font-size:21px}
 
-  h1{
-    font-size:clamp(38px,10vw,64px);
-    line-height:1.02;
-    letter-spacing:-.035em;
-    font-weight:800;
-    background:linear-gradient(100deg,#fff 20%,#9aa0ad 95%);
-    -webkit-background-clip:text;
-    background-clip:text;
-    color:transparent;
-  }
+  /* ---------- Buttons ---------- */
+  .btn{display:inline-flex; align-items:center; justify-content:center; gap:8px; font-weight:600; font-size:15px;
+    padding:13px 18px; border-radius:var(--r-sm); transition:transform .08s ease, background .15s ease, box-shadow .15s}
+  .btn:active{transform:scale(.98)}
+  .btn-primary{background:var(--brand); color:#fff; box-shadow:0 1px 2px rgba(14,124,102,.4), 0 6px 16px rgba(14,124,102,.22)}
+  .btn-primary:hover{background:var(--brand-ink)}
+  .btn-primary:disabled{background:#C7CDD4; box-shadow:none; cursor:not-allowed; color:#fff}
+  .btn-ghost{background:var(--card); border:1px solid var(--line); color:var(--ink); box-shadow:var(--shadow)}
+  .btn-ghost:hover{border-color:#cfd4db}
+  .btn-block{width:100%}
+  .btn-sm{padding:9px 13px; font-size:13px; border-radius:9px}
 
-  .sub{margin-top:14px;color:var(--muted);font-size:clamp(15px,3.6vw,17px)}
+  /* ---------- Cards / sections ---------- */
+  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--r); box-shadow:var(--shadow)}
+  .section-eyebrow{font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); margin:2px 0 12px}
+  .page-title{font-family:var(--display); font-weight:700; font-size:26px; letter-spacing:-.025em; margin-bottom:2px}
+  .page-sub{font-size:14px; color:var(--muted); margin-bottom:20px}
 
-  .grid{display:grid;gap:14px}
+  /* ---------- Forms ---------- */
+  .field{margin-bottom:16px}
+  .field label{display:block; font-size:13px; font-weight:600; color:var(--ink-soft); margin-bottom:7px}
+  .field .hint{font-weight:400; color:var(--faint)}
+  .input, textarea.input, select.input{width:100%; padding:13px 14px; border:1px solid var(--line); border-radius:var(--r-sm);
+    background:#fff; transition:border .15s, box-shadow .15s}
+  .input:focus, textarea.input:focus, select.input:focus{outline:none; border-color:var(--brand); box-shadow:0 0 0 3px #0E7C661f}
+  textarea.input{resize:vertical; min-height:70px; line-height:1.5}
+  .money-input{position:relative}
+  .money-input .sym{position:absolute; left:14px; top:50%; transform:translateY(-50%); color:var(--muted); font-weight:600; font-family:var(--display)}
+  .money-input input{padding-left:30px; font-family:var(--display); font-size:18px; font-weight:600}
 
-  .card{
-    position:relative;
-    display:flex;
-    align-items:center;
-    gap:18px;
-    padding:22px;
-    background:var(--panel);
-    border:1px solid var(--line);
-    border-radius:var(--radius);
-    text-decoration:none;
-    color:inherit;
-    overflow:hidden;
-    isolation:isolate;
-    transition:transform .25s cubic-bezier(.2,.7,.3,1),border-color .25s,background .25s;
-    -webkit-tap-highlight-color:transparent;
-  }
+  /* segmented control */
+  .seg{display:flex; background:var(--canvas); border:1px solid var(--line); border-radius:var(--r-sm); padding:4px; gap:4px}
+  .seg button{flex:1; padding:9px; border-radius:8px; font-size:13.5px; font-weight:600; color:var(--muted); transition:.15s}
+  .seg button.active{background:#fff; color:var(--ink); box-shadow:var(--shadow)}
 
-  .card::after{
-    content:"";
-    position:absolute;
-    inset:0;
-    z-index:-1;
-    opacity:0;
-    background:radial-gradient(120% 160% at 0% 50%, var(--accent), transparent 62%);
-    transition:opacity .3s;
-  }
+  /* person picker chips */
+  .people-grid{display:flex; flex-wrap:wrap; gap:8px}
+  .pchip{display:inline-flex; align-items:center; gap:8px; padding:6px 13px 6px 6px; border-radius:999px;
+    border:1.5px solid var(--line); background:#fff; font-size:14px; font-weight:600; color:var(--ink-soft); transition:.12s}
+  .pchip:active{transform:scale(.96)}
+  .pchip.on{border-color:var(--brand); background:#0E7C660d; color:var(--ink)}
+  .pchip .tick{margin-left:2px; color:var(--brand); opacity:0; transition:.12s; font-size:13px}
+  .pchip.on .tick{opacity:1}
 
-  .card:hover,.card:focus-visible{
-    transform:translateY(-3px);
-    background:var(--panel-hi);
-    border-color:color-mix(in srgb,var(--accent) 45%,transparent);
-    outline:none;
-  }
-  .card:hover::after,.card:focus-visible::after{opacity:.14}
-  .card:active{transform:translateY(0) scale(.99)}
+  .split-row{display:flex; align-items:center; gap:11px; padding:10px 0; border-bottom:1px solid var(--line-soft)}
+  .split-row:last-child{border-bottom:none}
+  .split-row .name{flex:1; font-weight:500; font-size:14.5px}
+  .split-row .amt{width:104px}
+  .stepper{display:inline-flex; align-items:center; gap:2px; background:var(--canvas); border:1px solid var(--line); border-radius:9px; padding:2px; margin-right:10px}
+  .stepper button{width:26px; height:26px; border-radius:7px; font-size:16px; font-weight:600; color:var(--ink-soft); display:grid; place-items:center}
+  .stepper button:active{background:#fff}
+  .stepper .st-v{min-width:22px; text-align:center; font-weight:600; font-family:var(--display); font-size:14px}
+  .rest-btn{font-size:11px; font-weight:600; color:var(--muted); background:var(--canvas); border:1px solid var(--line); border-radius:7px; padding:5px 9px; margin-right:10px}
+  .rest-btn.on{background:#0E7C660d; border-color:var(--brand); color:var(--brand)}
+  .seg-4 button{font-size:12.5px; padding:9px 4px}
+  .pct-row{padding:12px 2px; border-bottom:1px solid var(--line-soft)}
+  .pct-row:last-child{border-bottom:none}
+  .pct-head{display:flex; align-items:center; gap:9px; margin-bottom:9px}
+  .pct-lock{width:28px; height:28px; border-radius:8px; background:var(--canvas); border:1px solid var(--line); display:grid; place-items:center; font-size:12px; flex:none}
+  .pct-lock.on{background:#0E7C660d; border-color:var(--brand)}
+  .pct-mini{display:inline-flex; align-items:center; gap:3px; font-size:12px; color:var(--muted); font-weight:600; flex:none}
+  .numbox{display:inline-flex; align-items:stretch; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#fff; height:32px}
+  .numbox:focus-within{border-color:var(--brand); box-shadow:0 0 0 3px #0E7C661f}
+  .pct-in{width:38px; padding:0 6px; border:none; text-align:right; font-family:var(--display); font-weight:600; font-size:13px; background:transparent; color:var(--ink)}
+  .numbox.amt .pct-in{width:48px}
+  .pct-in:focus{outline:none}
+  .pct-in:disabled{color:var(--faint)}
+  .pct-in::-webkit-outer-spin-button, .pct-in::-webkit-inner-spin-button{-webkit-appearance:none; margin:0}
+  .pct-in[type=number]{-moz-appearance:textfield; appearance:textfield}
+  .nstep{display:flex; flex-direction:column; border-left:1px solid var(--line); flex:none}
+  .nstep button{width:18px; flex:1; display:grid; place-items:center; font-size:7px; color:var(--muted); background:var(--canvas); line-height:1; padding:0}
+  .nstep button:first-child{border-bottom:1px solid var(--line)}
+  .nstep button:active{background:var(--line); color:var(--ink)}
+  .nstep button:disabled{opacity:.4}
+  .numbox.amt .nstep{opacity:1}
+  .pct-row.locked .name{color:var(--muted)}
+  .pct-row.locked .numbox{background:var(--canvas)}
+  .pct-slider{-webkit-appearance:none; appearance:none; width:100%; height:6px; border-radius:99px; background:var(--line); outline:none; cursor:pointer}
+  .pct-slider:disabled{opacity:.5; cursor:not-allowed}
+  .pct-slider::-webkit-slider-thumb{-webkit-appearance:none; appearance:none; width:20px; height:20px; border-radius:50%; background:var(--brand); box-shadow:0 1px 4px rgba(0,0,0,.28); cursor:pointer}
+  .pct-slider::-moz-range-thumb{width:20px; height:20px; border:none; border-radius:50%; background:var(--brand); cursor:pointer}
+  .split-summary{display:flex; justify-content:space-between; align-items:baseline; padding:12px 14px; border-radius:var(--r-sm);
+    background:var(--canvas); font-size:13.5px; margin-top:8px}
+  .split-summary.bad{background:var(--neg-soft); color:#A8392F}
+  .split-summary.good{background:var(--pos-soft); color:#0F7A4E}
+  .split-summary .v{font-family:var(--display); font-weight:700; font-size:16px}
 
-  .icon{
-    flex:none;
-    width:54px;height:54px;
-    display:grid;place-items:center;
-    border-radius:15px;
-    background:color-mix(in srgb,var(--accent) 15%,transparent);
-    border:1px solid color-mix(in srgb,var(--accent) 32%,transparent);
-    color:var(--accent);
-  }
-  .icon svg{width:26px;height:26px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .upload{display:flex; align-items:center; gap:12px; padding:14px; border:1.5px dashed var(--line); border-radius:var(--r-sm);
+    background:#fafbfc; cursor:pointer; transition:.15s}
+  .upload:hover{border-color:var(--brand); background:#0E7C6608}
+  .upload .ic{width:38px; height:38px; border-radius:10px; background:var(--canvas); display:grid; place-items:center; flex:none}
+  .upload .t{font-size:13.5px; font-weight:600}
+  .upload .s{font-size:12px; color:var(--faint)}
+  .receipt-prev{display:flex; align-items:center; gap:10px; margin-top:10px; font-size:13px; background:var(--canvas); padding:8px 10px; border-radius:10px}
+  .receipt-prev img{width:44px; height:44px; object-fit:cover; border-radius:8px}
 
-  .body{min-width:0;flex:1}
+  /* ---------- Balances ---------- */
+  .overall{padding:22px 20px; border-radius:var(--r-lg); color:#fff; margin-bottom:18px; position:relative; overflow:hidden}
+  .overall.pos{background:linear-gradient(135deg,#15A06A,#0E7C66)}
+  .overall.neg{background:linear-gradient(135deg,#E5564B,#C53A30)}
+  .overall.zero{background:linear-gradient(135deg,#3A4250,#272D38)}
+  .overall .lbl{font-size:13px; opacity:.85; font-weight:500}
+  .overall .big{font-family:var(--display); font-weight:700; font-size:42px; letter-spacing:-.03em; line-height:1.1; margin-top:4px}
+  .overall .sub{font-size:13px; opacity:.85; margin-top:6px}
+  .overall::after{content:""; position:absolute; right:-40px; top:-40px; width:160px; height:160px; border-radius:50%; background:rgba(255,255,255,.08)}
 
-  .title{
-    font-size:19px;
-    font-weight:700;
-    letter-spacing:-.015em;
-    display:flex;
-    align-items:baseline;
-    gap:9px;
-    flex-wrap:wrap;
-  }
-  .tag{
-    font-size:10px;
-    font-weight:600;
-    letter-spacing:.14em;
-    text-transform:uppercase;
-    color:var(--accent);
-    background:color-mix(in srgb,var(--accent) 13%,transparent);
-    border-radius:999px;
-    padding:3px 9px;
-  }
+  .bal-row{display:flex; align-items:center; gap:13px; padding:15px 16px; border-bottom:1px solid var(--line-soft)}
+  .bal-row:last-child{border-bottom:none}
+  .bal-info{flex:1; min-width:0}
+  .bal-info .nm{font-weight:600; font-size:15px}
+  .bal-info .meta{font-size:12.5px; color:var(--faint)}
+  .flow{height:6px; background:var(--canvas); border-radius:99px; margin-top:8px; position:relative; overflow:hidden}
+  .flow .fill{position:absolute; top:0; bottom:0; border-radius:99px}
+  .bal-amt{text-align:right; flex:none}
+  .bal-amt .v{font-family:var(--display); font-weight:700; font-size:17px}
+  .bal-amt .d{font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em}
+  .pos-c{color:var(--pos)} .neg-c{color:var(--neg)} .zero-c{color:var(--faint)}
 
-  .desc{color:var(--muted);font-size:14.5px;margin-top:4px}
+  /* ---------- Quick ---------- */
+  .quick-grid{display:grid; grid-template-columns:1fr 1fr; gap:11px}
+  .quick-btn{background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:16px; text-align:left;
+    box-shadow:var(--shadow); transition:transform .08s, box-shadow .15s; position:relative}
+  .quick-btn:active{transform:scale(.97)}
+  .quick-btn:hover{box-shadow:var(--shadow-lg)}
+  .quick-btn .emo{font-size:26px; display:block; margin-bottom:8px}
+  .quick-btn .ql{font-weight:600; font-size:14.5px}
+  .quick-btn .qa{font-family:var(--display); font-weight:700; font-size:18px; margin-top:3px}
+  .quick-btn .qs{font-size:11.5px; color:var(--faint); margin-top:2px}
+  .quick-btn .del{position:absolute; top:8px; right:8px; width:24px; height:24px; border-radius:50%; background:var(--canvas);
+    display:grid; place-items:center; color:var(--muted); font-size:13px; opacity:0; transition:.15s}
+  .quick-btn:hover .del{opacity:1}
+  .quick-add{border:1.5px dashed var(--line); background:transparent; box-shadow:none; display:grid; place-items:center; color:var(--muted); min-height:118px; font-weight:600; font-size:14px}
+  .quick-add:hover{border-color:var(--brand); color:var(--brand)}
 
-  .chev{flex:none;color:var(--muted);transition:transform .25s,color .25s}
-  .chev svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-  .card:hover .chev,.card:focus-visible .chev{transform:translateX(4px);color:var(--accent)}
+  /* ---------- Trip ---------- */
+  .trip-route{display:flex; gap:12px; align-items:stretch}
+  .trip-route .pins{display:flex; flex-direction:column; align-items:center; padding-top:14px}
+  .trip-route .pin{width:11px; height:11px; border-radius:50%; border:2.5px solid var(--brand)}
+  .trip-route .pin.end{border-color:var(--neg); border-radius:50% 50% 50% 0; transform:rotate(45deg)}
+  .trip-route .line{flex:1; width:2px; background:repeating-linear-gradient(var(--line) 0 4px, transparent 4px 8px); margin:4px 0}
+  .trip-route .inputs{flex:1}
+  #map{height:200px; border-radius:var(--r); margin-top:14px; border:1px solid var(--line); background:var(--canvas); z-index:0}
+  .stop-dot{width:12px; height:12px; border-radius:50%; border:2.5px solid var(--brand); flex:none}
+  .stop-dot.end{border-color:var(--neg); border-radius:50% 50% 50% 0; transform:rotate(45deg)}
+  .stop-dot.mid{border-color:var(--muted)}
+  .stop-rm{width:32px; height:32px; border-radius:9px; background:var(--canvas); color:var(--muted); font-size:13px; flex:none; display:grid; place-items:center; border:1px solid var(--line)}
+  .stop-rm:active{transform:scale(.95)}
+  .trip-result{display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line); border-radius:var(--r); overflow:hidden; margin-top:14px}
+  .trip-result .cell{background:#fff; padding:14px 12px; text-align:center}
+  .trip-result .cv{font-family:var(--display); font-weight:700; font-size:21px}
+  .trip-result .cl{font-size:11px; color:var(--faint); margin-top:2px; text-transform:uppercase; letter-spacing:.05em}
+  .trip-result .cell.cost .cv{color:var(--brand)}
 
-  footer{
-    margin-top:clamp(34px,7vw,52px);
-    text-align:center;
-    color:var(--muted);
-    font-size:12.5px;
-    letter-spacing:.04em;
-  }
+  .veh-row{display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--line-soft)}
+  .veh-row:last-child{border-bottom:none}
+  .veh-row .vn{font-weight:600; font-size:14.5px}
+  .veh-row .vm{font-size:12.5px; color:var(--faint)}
 
-  @media (max-width:420px){
-    .card{padding:18px;gap:14px}
-    .icon{width:46px;height:46px;border-radius:13px}
-    .icon svg{width:22px;height:22px}
-    .title{font-size:17px}
-    .desc{font-size:13.5px}
-    .mark{width:72px;height:72px;border-radius:19px}
-  }
+  /* ---------- Activity ---------- */
+  .act-row{display:flex; align-items:center; gap:13px; padding:14px 16px; border-bottom:1px solid var(--line-soft)}
+  .act-row:last-child{border-bottom:none}
+  .act-ic{width:42px; height:42px; border-radius:12px; background:var(--canvas); display:grid; place-items:center; font-size:19px; flex:none}
+  .act-main{flex:1; min-width:0}
+  .act-main .at{font-weight:600; font-size:14.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .act-main .am{font-size:12.5px; color:var(--faint)}
+  .act-right{text-align:right; flex:none}
+  .act-right .tot{font-family:var(--display); font-weight:700; font-size:15px}
+  .act-right .yr{font-size:11.5px; color:var(--muted)}
 
-  @media (prefers-reduced-motion:reduce){
-    *{transition:none!important;animation:none!important}
-  }
+  /* ---------- Tab bar ---------- */
+  .tabbar{position:fixed; bottom:0; left:0; right:0; z-index:40; display:flex; justify-content:center; pointer-events:none}
+  .tabbar .inner{pointer-events:auto; display:flex; gap:1px; background:rgba(24,27,35,.92); backdrop-filter:blur(12px);
+    margin-bottom:max(14px,env(safe-area-inset-bottom)); padding:6px; border-radius:999px; box-shadow:var(--shadow-lg);
+    max-width:calc(100vw - 16px); overflow-x:auto; scrollbar-width:none}
+  .tabbar .inner::-webkit-scrollbar{display:none}
+  .tab{display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 11px; border-radius:999px; color:#9AA0AC; transition:.15s; min-width:50px; flex:none}
+  .tab svg{width:21px; height:21px}
+  .tab span{font-size:10px; font-weight:600}
+  .tab.active{background:#fff; color:var(--ink)}
+
+  /* ---------- Login ---------- */
+  .login{min-height:100dvh; display:flex; flex-direction:column; justify-content:center; padding:32px 24px; max-width:480px; margin:0 auto}
+  .login .hero{text-align:center; margin-bottom:36px}
+  .login .hero .mk{font-family:var(--display); font-weight:700; font-size:33px; line-height:1.1; letter-spacing:-.03em; display:inline-flex; align-items:center; gap:11px; justify-content:center}
+  .login .hero .mk .dot{width:14px;height:14px;border-radius:50%;background:var(--brand);box-shadow:0 0 0 6px #0E7C661f}
+  .login .hero p{color:var(--muted); margin-top:10px; font-size:15px}
+  .login .who{font-size:12px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); text-align:center; margin-bottom:18px}
+  .who-grid{display:grid; grid-template-columns:1fr 1fr; gap:11px}
+  .who-card{background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:18px 16px; display:flex; align-items:center; gap:13px;
+    box-shadow:var(--shadow); transition:transform .08s, box-shadow .15s; text-align:left}
+  .who-card:hover{box-shadow:var(--shadow-lg)}
+  .who-card:active{transform:scale(.97)}
+  .who-card .nm{font-weight:600; font-size:16px}
+  .who-add{grid-column:1/-1; border:1.5px dashed var(--line); background:transparent; box-shadow:none; justify-content:center; color:var(--muted); font-weight:600; padding:15px}
+  .who-add:hover{border-color:var(--brand); color:var(--brand)}
+
+  /* ---------- Modal / sheet ---------- */
+  .overlay{position:fixed; inset:0; background:rgba(17,20,28,.5); z-index:50; display:flex; align-items:flex-end; justify-content:center;
+    opacity:0; pointer-events:none; transition:opacity .2s}
+  .overlay.show{opacity:1; pointer-events:auto}
+  .sheet{background:var(--card); width:100%; max-width:560px; border-radius:var(--r-lg) var(--r-lg) 0 0; padding:8px 20px 24px;
+    max-height:90dvh; overflow-y:auto; transform:translateY(100%); transition:transform .26s cubic-bezier(.32,.72,0,1)}
+  .overlay.show .sheet{transform:translateY(0)}
+  .sheet .grip{width:38px; height:4px; background:var(--line); border-radius:99px; margin:8px auto 14px}
+  .sheet h2{font-family:var(--display); font-weight:700; font-size:21px; letter-spacing:-.02em; margin-bottom:4px}
+  .sheet .desc{font-size:13.5px; color:var(--muted); margin-bottom:18px}
+
+  /* ---------- Toast ---------- */
+  #toasts{position:fixed; top:14px; left:0; right:0; z-index:60; display:flex; flex-direction:column; align-items:center; gap:8px; pointer-events:none}
+  .toast{background:var(--ink); color:#fff; padding:11px 18px; border-radius:999px; font-size:13.5px; font-weight:500;
+    box-shadow:var(--shadow-lg); display:flex; align-items:center; gap:9px; transform:translateY(-16px); opacity:0; transition:.25s}
+  .toast.show{transform:translateY(0); opacity:1}
+  .toast.err{background:var(--neg)}
+  .toast.ok .ic{color:#5BE3A5}
+
+  .empty{text-align:center; padding:48px 20px; color:var(--faint)}
+  .empty .e-ic{font-size:34px; margin-bottom:10px}
+  .empty .e-t{font-weight:600; color:var(--muted); font-size:15px}
+  .empty .e-s{font-size:13.5px; margin-top:4px}
+
+  .spin{width:18px; height:18px; border:2.5px solid #ffffff55; border-top-color:#fff; border-radius:50%; animation:sp .7s linear infinite; display:inline-block}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .skeleton{background:linear-gradient(90deg,#e9ecf0 25%,#f2f4f7 50%,#e9ecf0 75%); background-size:200% 100%; animation:sk 1.3s infinite; border-radius:8px}
+  @keyframes sk{to{background-position:-200% 0}}
+
+  @media (max-width:380px){ .quick-grid,.who-grid{grid-template-columns:1fr} }
+  @media (prefers-reduced-motion:reduce){ *{animation-duration:.001ms!important; transition-duration:.001ms!important} }
 </style>
 </head>
 <body>
-<div class="wrap">
 
-  <header>
-    <img class="mark" src="icon-192.png" alt="" width="84" height="84">
-    <h1>Everything Kunky,<br>in one place.</h1>
-    <p class="sub">Pick where you're heading.</p>
-  </header>
+<div id="login" class="login"></div>
 
-  <main class="grid">
-
-    <a class="card" style="--accent:var(--money)" href="https://oarandz.github.io/kunkycentral/">
-      <span class="icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="M12 2v20"/><path d="M17 6.5A3.5 3.5 0 0 0 13.5 3h-3a3.5 3.5 0 0 0 0 7h3a3.5 3.5 0 0 1 0 7h-3.5A3.5 3.5 0 0 1 6.5 13.5"/></svg>
-      </span>
-      <span class="body">
-        <span class="title">Kunky Money <span class="tag">The Kunky Economy</span></span>
-        <span class="desc">Track the ledger, balances and who owes what.</span>
-      </span>
-      <span class="chev" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></span>
-    </a>
-
-    <a class="card" style="--accent:var(--film)" href="https://oarandz.github.io/kunkyfilmplan/">
-      <span class="icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2.5"/><path d="M7 4v16M17 4v16M2.5 9.5h4.5M17 9.5h4.5M2.5 14.5h4.5M17 14.5h4.5"/></svg>
-      </span>
-      <span class="body">
-        <span class="title">Kunky Film <span class="tag">Omniplex Wigan</span></span>
-        <span class="desc">Screening schedule, diary, reviews and fixtures.</span>
-      </span>
-      <span class="chev" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></span>
-    </a>
-
-    <a class="card" style="--accent:var(--cal)" href="https://oarandz.github.io/kunkycalendar/">
-      <span class="icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17.5h.01M12 17.5h.01"/></svg>
-      </span>
-      <span class="body">
-        <span class="title">Kunky Calendar <span class="tag">Shared plans</span></span>
-        <span class="desc">Everyone's plans in one place — find time together.</span>
-      </span>
-      <span class="chev" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></span>
-    </a>
-
-    <a class="card" style="--accent:var(--quiz)" href="https://woodsmanquiz.com/">
-      <span class="icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="M9.2 9a2.9 2.9 0 1 1 3.9 2.7c-.7.3-1.1 1-1.1 1.8v.4"/><path d="M12 17.5h.01"/><circle cx="12" cy="12" r="9.5"/></svg>
-      </span>
-      <span class="body">
-        <span class="title">Kunky Quiz <span class="tag">The Woodsman's</span></span>
-        <span class="desc">Book your table for quiz night and manage bookings.</span>
-      </span>
-      <span class="chev" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></span>
-    </a>
-
-  </main>
-
-  <footer>Kunky Central</footer>
-
+<div id="app" style="display:none">
+  <div class="topbar">
+    <div class="wordmark"><span class="dot"></span>The Kunky Economy</div>
+    <div class="spacer"></div>
+    <button class="icon-btn" id="gearBtn" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+    <button class="me-chip" id="meChip"></button>
+  </div>
+  <main id="view"></main>
+  <nav class="tabbar"><div class="inner" id="tabbar"></div></nav>
 </div>
+
+<div class="overlay" id="overlay"><div class="sheet" id="sheet"></div></div>
+<div id="toasts"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ============================================================== *
+ *  SUPABASE CONNECTION
+ *  Paste your Project URL and anon (public) key below — find them
+ *  in your Supabase dashboard under Settings → API. The anon key is
+ *  safe to ship in the page; access is governed by your RLS rules.
+ *  You can also connect at runtime via the box at the top of the app.
+ * ============================================================== */
+let SUPABASE_URL = "https://zlauszzjvhlivyskcoqt.supabase.co";
+let SUPABASE_ANON_KEY = "sb_publishable_0_6a25hAU3KPKSOfcbZRxQ_BCgla_LQ";
+let sb = null;          // supabase client
+let connected = false;  // true once the client is ready
+
+function initSupabase(){
+  if(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase){
+    try{ sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); connected = true; }
+    catch(e){ connected = false; }
+  }
+  return connected;
+}
+
+/* ---- Smart add (receipt scanning with Claude) ---- */
+const AI_MODEL = "claude-haiku-4-5-20251001"; // vision-capable, cheap
+const API_PAYER = "Owen";   // who the 1p-per-scan charge is owed to
+const AI_CALL_PENCE = 1;    // pennies charged per involved person, per scan
+let ANTHROPIC_API_KEY = ""; // optional fallback — better to set it in Settings
+
+/* ---------------- State ---------------- */
+const PALETTE = ['#E5564B','#1DAA6B','#3B82F6','#F59E0B','#8B5CF6','#EC4899','#0EA5E9','#14B8A6','#F97316','#6366F1'];
+const SEED_PEOPLE = ['Owen','Alex','Conor','Ben','Alice','Lucy'];
+const SEED_PLACES = [
+  {label:'Owen\u2019s Home', address:'Little Lane, WN3 6PX'},
+  {label:'Alice\u2019s Home', address:'Foundry Lane, Wigan'},
+  {label:'Conor\u2019s Home', address:'Pepper Lane Chippy, Standish'},
+  {label:'Lucy\u2019s Home', address:'Glebe Road, Standish'},
+  {label:'Kunky House', address:'Dangerous Corner, Leigh'}
+];
+const state = {
+  people: SEED_PEOPLE.map((n,i)=>({name:n,color:PALETTE[i%PALETTE.length]})),
+  vehicles: [], quick: [], quickTrips: [], places: SEED_PLACES.slice(), expenses: [], recurring: [], settings: { fuelPence: 156 },
+  me: null, tab: 'balances', tagFilter: null, connected: false, loading: false
+};
+const fuelPence = () => (state.settings && state.settings.fuelPence) || 156;
+const fuelGBP = () => '£'+ (fuelPence()/100).toFixed(2);
+const aiKey = () => (state.settings && state.settings.aiKey) || ANTHROPIC_API_KEY;
+const ntfySlug = n => String(n).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+const ntfyServerBase = () => { const s=(state.settings&&state.settings.ntfyServer)||'https://ntfy.sh'; return /^https?:\/\//.test(s)?s.replace(/\/+$/,''):'https://ntfy.sh'; };
+const personTopic = name => (state.settings&&state.settings.ntfyBase) ? state.settings.ntfyBase+'-'+ntfySlug(name) : '';
+const placeResolve = txt => { const p = state.places.find(x=>x.label.toLowerCase()===String(txt||'').trim().toLowerCase()); return p ? p.address : txt; };
+const allTags = () => [...new Set(state.expenses.map(x=>x.tag).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+const placeDatalist = id => `<datalist id="${id}">${state.places.map(p=>`<option value="${esc(p.label)}"></option>`).join('')}</datalist>`;
+const tagDatalist = id => `<datalist id="${id}">${allTags().map(t=>`<option value="${esc(t)}"></option>`).join('')}</datalist>`;
+
+/* ---------------- Helpers ---------------- */
+const $ = s => document.querySelector(s);
+const el = (tag, cls, html) => { const e=document.createElement(tag); if(cls) e.className=cls; if(html!=null) e.innerHTML=html; return e; };
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => '£'+(Math.round(Number(n)*100)/100).toFixed(2);
+const initials = n => n.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
+const personColor = n => (state.people.find(p=>p.name===n)||{}).color || '#717784';
+const avatar = (name, size='sm') => `<span class="av ${size}" style="background:${personColor(name)}">${esc(initials(name))}</span>`;
+const todayISO = () => { const d=new Date(), z=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`; };
+const tsFromISO = iso => { if(!iso) return Date.now(); const [y,m,d]=iso.split('-').map(Number); return new Date(y,(m||1)-1,d||1,12,0,0).getTime(); };
+const fmtDate = ts => new Date(ts).toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+
+/* ---- Standing orders / recurring payments ---- */
+const STANDING_MARKER = '🔁 Standing order (simulated)';
+const WEEKDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const REPEATS = [
+  {v:'w1', label:'Weekly',         freq:'weekly',  interval:1},
+  {v:'w2', label:'Fortnightly',    freq:'weekly',  interval:2},
+  {v:'w4', label:'Every 4 weeks',  freq:'weekly',  interval:4},
+  {v:'m1', label:'Monthly',        freq:'monthly', interval:1},
+  {v:'m2', label:'Every 2 months', freq:'monthly', interval:2},
+  {v:'m3', label:'Quarterly',      freq:'monthly', interval:3},
+  {v:'m6', label:'Every 6 months', freq:'monthly', interval:6},
+  {v:'m12',label:'Yearly',         freq:'monthly', interval:12},
+];
+const repeatOf = v => REPEATS.find(x=>x.v===v) || REPEATS[3];
+const repeatV = r => { const x=REPEATS.find(x=>x.freq===r.freq && x.interval===r.interval); return x?x.v:(r.freq==='weekly'?'w1':'m1'); };
+const isoOf = d => { const z=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`; };
+const parseISO = s => new Date(s+'T12:00:00');
+const addDays = (d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+const daysInMonth = (y,m)=> new Date(y,m+1,0).getDate();
+function addMonths(y,m,n){ let mm=m+n, yy=y+Math.floor(mm/12); mm=((mm%12)+12)%12; return [yy,mm]; }
+function domDate(y,m,dom){ const dim=daysInMonth(y,m); return new Date(y,m, dom===0?dim:Math.min(dom,dim), 12); }
+function nthWeekdayOfMonth(y,m,pos,weekday){
+  if(pos===0){ let d=new Date(y,m,daysInMonth(y,m),12); while(d.getDay()!==weekday) d=addDays(d,-1); return d; }
+  let d=new Date(y,m,1,12), count=0;
+  while(d.getMonth()===m){ if(d.getDay()===weekday){ count++; if(count===pos) return d; } d=addDays(d,1); }
+  return nthWeekdayOfMonth(y,m,0,weekday);
+}
+function monthlyOccurrence(y,m,rule){ return rule.dayMode==='dow' ? nthWeekdayOfMonth(y,m,rule.weekPos,rule.weekday) : domDate(y,m,rule.dayOfMonth); }
+function firstDue(rule, floor){
+  floor = floor || rule.start;
+  if(rule.freq==='weekly'){ let d=parseISO(rule.start); let guard=0; while(isoOf(d)<floor && guard++<520) d=addDays(d,7*(rule.interval||1)); return isoOf(d); }
+  let b=parseISO(rule.start), y=b.getFullYear(), m=b.getMonth(), occ=monthlyOccurrence(y,m,rule), guard=0;
+  while(isoOf(occ)<floor && guard++<240){ [y,m]=addMonths(y,m,rule.interval||1); occ=monthlyOccurrence(y,m,rule); }
+  return isoOf(occ);
+}
+function advanceRule(rule){
+  if(rule.endMode==='count' && (rule.runsDone+1) >= rule.endCount) return null;
+  const cur=parseISO(rule.nextDue); let nextIso;
+  if(rule.freq==='weekly'){ nextIso=isoOf(addDays(cur,7*(rule.interval||1))); }
+  else { let [y,m]=addMonths(cur.getFullYear(),cur.getMonth(),rule.interval||1); nextIso=isoOf(monthlyOccurrence(y,m,rule)); }
+  if(rule.endMode==='date' && rule.endDate && nextIso>rule.endDate) return null;
+  return nextIso;
+}
+const ordinal = n => { const s=['th','st','nd','rd'], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); };
+function repeatLabel(freq,interval){
+  if(freq==='weekly') return interval===1?'weekly':interval===2?'fortnightly':`every ${interval} weeks`;
+  return interval===1?'monthly':interval===3?'quarterly':interval===12?'yearly':`every ${interval} months`;
+}
+function dayRuleLabel(r){
+  if(r.freq==='weekly') return 'on '+WEEKDAYS[r.weekday!=null?r.weekday:parseISO(r.start).getDay()];
+  if(r.dayMode==='dow'){ const pos=r.weekPos===0?'last':ordinal(r.weekPos); return `on the ${pos} ${WEEKDAYS[r.weekday]}`; }
+  return `on the ${r.dayOfMonth===0?'last day':ordinal(r.dayOfMonth)}`;
+}
+function fmtLong(iso){ if(!iso) return ''; const d=parseISO(iso); return d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); }
+function ruleSummary(r){ return `${repeatLabel(r.freq,r.interval)}, ${dayRuleLabel(r)}`; }
+function ruleObj(rc){ const r=repeatOf(rc.repeat); return { freq:r.freq, interval:r.interval, dayMode:rc.dayMode, dayOfMonth:rc.dayOfMonth, weekPos:rc.weekPos, weekday: r.freq==='weekly'?parseISO(rc.start).getDay():rc.weekday, start:rc.start, endMode:rc.endMode, endDate:rc.endDate, endCount:rc.endCount, runsDone:0, nextDue:null }; }
+// true when an expense/transfer creates a debt between a and b
+const involvesPair = (x,a,b) => { const sp=x.split||{}; return (x.paidBy===a && sp[b]!=null) || (x.paidBy===b && sp[a]!=null); };
+
+/* ---------------- Backend (Supabase) ---------------- */
+const normSplit = v => (Array.isArray(v) ? v : 'all');
+function ruleFromPayload(p){ return { freq:p.freq, interval:p.interval, dayMode:p.dayMode, dayOfMonth:p.dayOfMonth, weekPos:p.weekPos, weekday:p.weekday, start:p.start, endMode:p.endMode, endDate:p.endDate, endCount:p.endCount, runsDone:0, nextDue:null }; }
+
+// Apply any standing orders that have come due — one run per rule, once per app open.
+let standingProcessed = false;
+async function runDueStandingOrders(){
+  if(standingProcessed || !connected || !sb) return;
+  standingProcessed = true;
+  const today = todayISO();
+  let created = 0;
+  for(const r of (state.recurring||[])){
+    if(!r.active || !r.nextDue || r.nextDue > today) continue;
+    const next = advanceRule(r);
+    const claim = await sb.from('recurring').update({ next_due: next, runs_done:(r.runsDone||0)+1, active: !!next }).eq('id', r.id).eq('next_due', r.nextDue).select();
+    if(claim.data && claim.data.length){
+      try{
+        await api('addExpense', { name:`${r.from} → ${r.to}`, total:r.amount, paidBy:r.from, split:{[r.to]:r.amount}, type:'transfer', description:STANDING_MARKER, ts: tsFromISO(r.nextDue) });
+        created++;
+      }catch(e){}
+    }
+  }
+  if(created){ await refresh(); toast(`${created} standing order${created>1?'s':''} applied`); }
+}
+
+async function fetchAllData(){
+  const [pe,ve,qe,qt,pl,ex,se,rc] = await Promise.all([
+    sb.from('people').select('*').order('id'),
+    sb.from('vehicles').select('*').order('name'),
+    sb.from('quick_expenses').select('*').order('id'),
+    sb.from('quick_trips').select('*').order('id'),
+    sb.from('places').select('*').order('id'),
+    sb.from('expenses').select('*'),
+    sb.from('settings').select('*'),
+    sb.from('recurring').select('*').order('id')
+  ]);
+  const err = pe.error||ve.error||qe.error||qt.error||pl.error||ex.error||se.error||rc.error;
+  if(err) throw new Error(err.message || 'Supabase read failed');
+  const S={}; (se.data||[]).forEach(r=> S[r.key]=r.value);
+  return {
+    people: (pe.data||[]).filter(p=>p.active!==false).map(p=>({name:p.name, color:p.color||'#3B82F6'})),
+    vehicles: (ve.data||[]).map(v=>({name:v.name, mpg:Number(v.mpg)||0})),
+    quick: (qe.data||[]).map(q=>({label:q.label, emoji:q.emoji||'⚡', amount:Number(q.amount)||0, description:q.description||'', split:normSplit(q.split)})),
+    quickTrips: (qt.data||[]).map(q=>({label:q.label, emoji:q.emoji||'🚗', origin:q.origin, destination:q.destination, vehicle:q.vehicle||'', mpg:Number(q.mpg)||0, roundTrip:!!q.round_trip, split:normSplit(q.split)})),
+    places: (pl.data||[]).map(p=>({label:p.label, address:p.address})),
+    expenses: (ex.data||[]).map(x=>({id:x.id, ts:new Date(x.ts).getTime(), name:x.name, description:x.description||'', paidBy:x.paid_by, total:Number(x.total)||0, type:x.type||'expense', split:x.split||{}, receiptUrl:x.receipt_url||'', tag:x.tag||''})),
+    recurring: (rc.data||[]).map(r=>({ id:r.id, from:r.from_person, to:r.to_person, amount:Number(r.amount)||0, freq:r.freq, interval:Number(r.interval)||1, dayMode:r.day_mode, dayOfMonth:r.day_of_month, weekPos:r.week_pos, weekday:r.weekday, start:r.start_date, endMode:r.end_mode, endDate:r.end_date, endCount:r.end_count, nextDue:r.next_due, runsDone:Number(r.runs_done)||0, active:r.active!==false })),
+    settings: { fuelPence:Number(S.fuelPence)||156, ntfyBase:S.ntfyBase||'', ntfyServer:S.ntfyServer||'https://ntfy.sh', ntfyToken:S.ntfyToken||'', ntfyTokenSet: !!S.ntfyToken, aiKey:S.aiKey||'', aiKeySet: !!S.aiKey }
+  };
+}
+function sbThrow(error){ if(error) throw new Error(error.message||'Supabase error'); }
+
+async function uploadReceipt(r){
+  const bytes = Uint8Array.from(atob(r.data), c=>c.charCodeAt(0));
+  const blob = new Blob([bytes], {type:r.mimeType||'application/octet-stream'});
+  const path = Date.now()+'_'+Math.random().toString(36).slice(2)+'_'+String(r.name||'receipt').replace(/[^\w.\-]/g,'_');
+  const up = await sb.storage.from('receipts').upload(path, blob, {contentType:r.mimeType, upsert:false});
+  sbThrow(up.error);
+  return sb.storage.from('receipts').getPublicUrl(path).data.publicUrl;
+}
+
+/* ntfy — sent straight from the browser (your own IP, so no shared-IP limit) */
+async function ntfySend(list){
+  const st = state.settings||{};
+  const server = /^https?:\/\//.test(st.ntfyServer||'') ? st.ntfyServer.replace(/\/+$/,'') : 'https://ntfy.sh';
+  const token = st.ntfyToken||'';
+  await Promise.all(list.map(n=>{
+    const headers = {'Title':n.title};
+    if(token) headers['Authorization']='Bearer '+token;
+    if(n.tags) headers['Tags']=n.tags;
+    return fetch(server+'/'+n.topic, {method:'POST', headers, body:n.message}).catch(()=>{});
+  }));
+}
+async function notifyForExpense(info){
+  const base = state.settings && state.settings.ntfyBase; if(!base) return;
+  const list=[];
+  if(info.type==='transfer'){
+    const to = Object.keys(info.split)[0];
+    if(to && to!==info.paidBy) list.push({topic:personTopic(to), title:'Payment received', message:`${info.paidBy} paid you £${Number(info.total).toFixed(2)}.`, tags:'money_with_wings'});
+  } else {
+    const label = info.type==='trip'?'trip':'expense';
+    const tag = info.type==='trip'?'car':'moneybag';
+    Object.keys(info.split).forEach(p=>{ const share=Number(info.split[p])||0; if(p===info.paidBy||share<=0) return;
+      list.push({topic:personTopic(p), title:'New '+label, message:`${info.paidBy} added "${info.name}" — £${Number(info.total).toFixed(2)} total. Your share: £${share.toFixed(2)}.`, tags:tag}); });
+  }
+  if(list.length) await ntfySend(list);
+}
+
+/* trip distance — keyless geocoding (Nominatim) + routing (OSRM) */
+const geoCache = {};
+async function geocode(q){
+  if(geoCache[q]) return geoCache[q];
+  const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`, {headers:{'Accept':'application/json'}});
+  const j = await res.json();
+  if(!j.length) throw new Error(`Couldn't find "${q}" on the map — try a postcode.`);
+  const c = {lat:Number(j[0].lat), lng:Number(j[0].lon)}; geoCache[q]=c; return c;
+}
+async function calcTripClient(payload){
+  let stops=[];
+  if(payload.stops && payload.stops.length) stops = payload.stops.map(s=>String(s||'').trim()).filter(Boolean);
+  else { const o=String(payload.origin||'').trim(), d=String(payload.destination||'').trim(); if(o)stops.push(o); if(d)stops.push(d); if(payload.roundTrip&&o)stops.push(o); }
+  if(stops.length<2) throw new Error('Enter a start and at least one more stop.');
+  const mpg=Number(payload.mpg); if(!(mpg>0)) throw new Error('Enter the vehicle MPG.');
+  const pence=fuelPence();
+  const coords=[]; for(const s of stops){ coords.push(await geocode(s)); }
+  const url=`https://router.project-osrm.org/route/v1/driving/${coords.map(c=>c.lng+','+c.lat).join(';')}?overview=full&geometries=geojson`;
+  const j=await (await fetch(url)).json();
+  if(j.code!=='Ok'||!j.routes||!j.routes.length) throw new Error('No driving route found between those places.');
+  const route=j.routes[0]; const legs=[]; let totalMiles=0;
+  route.legs.forEach((leg,idx)=>{ const miles=leg.distance/1609.344; totalMiles+=miles;
+    const litres=(miles/mpg)*4.54609, costExact=litres*(pence/100);
+    legs.push({from:stops[idx], to:stops[idx+1], miles:Math.round(miles*10)/10, litres:Math.round(litres*100)/100, cost:Math.round(costExact*100)/100, costExact}); });
+  const totalLitres=(totalMiles/mpg)*4.54609, totalCost=totalLitres*(pence/100);
+  const points=coords.map(c=>[c.lat,c.lng]);
+  const geo=(route.geometry&&route.geometry.coordinates)? route.geometry.coordinates.map(c=>[c[1],c[0]]) : points;
+  return { stops, origin:stops[0], destination:stops[stops.length-1], legs, miles:Math.round(totalMiles*10)/10, litres:Math.round(totalLitres*100)/100, cost:Math.round(totalCost*100)/100, pence, roundTrip:!!payload.roundTrip, points, geo };
+}
+
+async function scanReceipt(image){
+  const key = aiKey();
+  if(!key) throw new Error('Add your Anthropic API key in Settings first.');
+  const prompt = 'You are a receipt parser. Read this receipt image and return ONLY JSON — no markdown, no commentary — in exactly this shape:\n'
+    + '{"merchant":string,"items":[{"name":string,"qty":number,"price":number}],"delivery":number,"service":number,"total":number}\n'
+    + 'Rules: "price" is the total for that line (quantity times unit price) in pounds as a number. Combine obvious duplicates only if the receipt does. "delivery" and "service" are 0 if not present. "total" is the grand total printed on the receipt. Use plain numbers (e.g. 12.50), no currency symbols. If a value is unreadable, give your best estimate.';
+  const isPdf = (image.mimeType||'').includes('pdf');
+  const media = isPdf
+    ? { type:'document', source:{ type:'base64', media_type:'application/pdf', data:image.data } }
+    : { type:'image', source:{ type:'base64', media_type:image.mimeType||'image/jpeg', data:image.data } };
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers:{
+      'content-type':'application/json',
+      'x-api-key': key,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body: JSON.stringify({
+      model: AI_MODEL, max_tokens: 1500,
+      messages:[{ role:'user', content:[ media, { type:'text', text: prompt } ]}]
+    })
+  });
+  if(!res.ok){ const t=await res.text(); throw new Error('AI error '+res.status+': '+t.slice(0,140)); }
+  const data = await res.json();
+  const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
+  let clean = text.replace(/```json/gi,'').replace(/```/g,'').trim();
+  let parsed;
+  try{ parsed = JSON.parse(clean); }
+  catch(e){ const m = clean.match(/\{[\s\S]*\}/); if(!m) throw new Error('Could not read that receipt — try a clearer photo.'); parsed = JSON.parse(m[0]); }
+  if(!parsed.items || !parsed.items.length) throw new Error('No items found on that receipt.');
+  return parsed;
+}
+
+// Split items among their assignees; charges split equally across everyone involved.
+function computeReceiptShares(items, delivery, service, involved){
+  const raw={}; involved.forEach(p=>raw[p]=0);
+  items.forEach(it=>{ const who=[...(it.assignedTo||[])]; if(!who.length) return; const each=(Number(it.price)||0)/who.length; who.forEach(p=>{ if(raw[p]==null) raw[p]=0; raw[p]+=each; }); });
+  const chg=(Number(delivery)||0)+(Number(service)||0);
+  if(chg>0 && involved.length){ const each=chg/involved.length; involved.forEach(p=>raw[p]+=each); }
+  const totalF = items.reduce((s,it)=>s+(Number(it.price)||0),0)+chg;
+  const target = Math.round(totalF*100);
+  const names=involved.slice();
+  const cc={}; names.forEach(p=>cc[p]=Math.floor(raw[p]*100));
+  const order=names.map(p=>({p,f:raw[p]*100-Math.floor(raw[p]*100)})).sort((a,b)=>b.f-a.f);
+  let rem=target-names.reduce((s,p)=>s+cc[p],0),k=0;
+  while(rem>0){ cc[order[k%order.length].p]+=1; rem--; k++; }
+  while(rem<0){ const p=order[order.length-1-(k%order.length)].p; if(cc[p]>0){cc[p]-=1; rem++;} k++; }
+  const split={}; names.forEach(p=>split[p]=cc[p]/100);
+  return {split, total: target/100};
+}
+
+async function api(action, payload){
+  payload = payload||{};
+  if(!connected || !sb) throw new Error('Not connected to Supabase yet.');
+  const refetch = async ()=> fetchAllData();
+  switch(action){
+    case 'getData': return fetchAllData();
+
+    case 'addPerson': {
+      const name=String(payload.name||'').trim(); if(!name) throw new Error('A name is required.');
+      const cur=(await sb.from('people').select('name')).data||[];
+      if(cur.some(p=>String(p.name).toLowerCase()===name.toLowerCase())) throw new Error(name+' is already on the list.');
+      const color=PALETTE[cur.length%PALETTE.length];
+      sbThrow((await sb.from('people').insert({name, color, active:true})).error);
+      return refetch();
+    }
+    case 'addExpense': {
+      const name=String(payload.name||'').trim(); const total=Number(payload.total); const paidBy=String(payload.paidBy||'').trim();
+      const split=payload.split||{};
+      if(!name) throw new Error('Give the expense a name.');
+      if(!(total>0)) throw new Error('Enter an amount greater than zero.');
+      if(!paidBy) throw new Error('Choose who paid.');
+      let receipt_url='';
+      if(payload.receipt && payload.receipt.data) receipt_url = await uploadReceipt(payload.receipt);
+      const id='exp_'+Date.now()+'_'+Math.floor(Math.random()*1e4);
+      const ts=new Date(payload.ts||Date.now()).toISOString();
+      sbThrow((await sb.from('expenses').insert({id, ts, name, description:String(payload.description||''), paid_by:paidBy, total, type:String(payload.type||'expense'), split, receipt_url, tag:String(payload.tag||'')})).error);
+      try{ await notifyForExpense({name, total, paidBy, split, type:String(payload.type||'expense')}); }catch(e){}
+      return refetch();
+    }
+    case 'deleteExpense': sbThrow((await sb.from('expenses').delete().eq('id', String(payload.id||''))).error); return refetch();
+    case 'setExpenseTag': sbThrow((await sb.from('expenses').update({tag:String(payload.tag||'').trim()}).eq('id', String(payload.id||''))).error); return refetch();
+
+    case 'addQuickExpense': {
+      const label=String(payload.label||'').trim(); if(!label) throw new Error('Give the quick expense a label.');
+      sbThrow((await sb.from('quick_expenses').upsert({label, emoji:payload.emoji||'⚡', amount:Number(payload.amount)||0, description:payload.description||'', split:payload.split==='all'?'all':(payload.split||'all')}, {onConflict:'label'})).error);
+      return refetch();
+    }
+    case 'deleteQuickExpense': sbThrow((await sb.from('quick_expenses').delete().eq('label', String(payload.label||''))).error); return refetch();
+
+    case 'addQuickTrip': {
+      const label=String(payload.label||'').trim(); if(!label) throw new Error('Give the quick trip a label.');
+      sbThrow((await sb.from('quick_trips').upsert({label, emoji:payload.emoji||'🚗', origin:payload.origin, destination:payload.destination, vehicle:payload.vehicle||'', mpg:Number(payload.mpg)||0, round_trip:!!payload.roundTrip, split:payload.split==='all'?'all':(payload.split||'all')}, {onConflict:'label'})).error);
+      return refetch();
+    }
+    case 'deleteQuickTrip': sbThrow((await sb.from('quick_trips').delete().eq('label', String(payload.label||''))).error); return refetch();
+
+    case 'addVehicle': sbThrow((await sb.from('vehicles').upsert({name:String(payload.name||'').trim(), mpg:Number(payload.mpg)||0}, {onConflict:'name'})).error); return refetch();
+    case 'deleteVehicle': sbThrow((await sb.from('vehicles').delete().eq('name', String(payload.name||''))).error); return refetch();
+
+    case 'addPlace': sbThrow((await sb.from('places').upsert({label:String(payload.label||'').trim(), address:String(payload.address||'').trim()}, {onConflict:'label'})).error); return refetch();
+    case 'deletePlace': sbThrow((await sb.from('places').delete().eq('label', String(payload.label||''))).error); return refetch();
+
+    case 'setFuelPrice': {
+      const p=Number(payload.fuelPence); if(!(p>0)) throw new Error('Enter a fuel price greater than zero.');
+      sbThrow((await sb.from('settings').upsert({key:'fuelPence', value:String(p)})).error); return refetch();
+    }
+    case 'setNtfy': {
+      const base=ntfySlug(String(payload.base||''));
+      sbThrow((await sb.from('settings').upsert({key:'ntfyBase', value:base})).error);
+      if(payload.server!=null) sbThrow((await sb.from('settings').upsert({key:'ntfyServer', value:String(payload.server||'').trim()||'https://ntfy.sh'})).error);
+      if(payload.token!=null) sbThrow((await sb.from('settings').upsert({key:'ntfyToken', value:String(payload.token||'').trim()})).error);
+      return refetch();
+    }
+    case 'testNtfy': {
+      if(!state.settings.ntfyBase) throw new Error('Set a notification topic first.');
+      await ntfySend([{topic:personTopic(payload.name||state.me), title:'Test notification', message:`🔔 Notifications are working for ${payload.name||state.me}.`, tags:'bell'}]);
+      return {sent:true};
+    }
+    case 'setAiKey': {
+      sbThrow((await sb.from('settings').upsert({key:'aiKey', value:String(payload.key||'').trim()})).error);
+      return refetch();
+    }
+    case 'addRecurring': {
+      const p=payload; const rule=ruleFromPayload(p); const next=firstDue(rule, p.start);
+      sbThrow((await sb.from('recurring').insert({ from_person:p.from, to_person:p.to, amount:Number(p.amount)||0, freq:p.freq, interval:p.interval, day_mode:p.dayMode, day_of_month:p.dayOfMonth, week_pos:p.weekPos, weekday:p.weekday, start_date:p.start, end_mode:p.endMode, end_date:p.endDate||null, end_count:p.endCount||null, next_due:next, runs_done:0, active:true })).error);
+      return refetch();
+    }
+    case 'updateRecurring': {
+      const p=payload; const rule=ruleFromPayload(p); const next=firstDue(rule, todayISO());
+      sbThrow((await sb.from('recurring').update({ from_person:p.from, to_person:p.to, amount:Number(p.amount)||0, freq:p.freq, interval:p.interval, day_mode:p.dayMode, day_of_month:p.dayOfMonth, week_pos:p.weekPos, weekday:p.weekday, start_date:p.start, end_mode:p.endMode, end_date:p.endDate||null, end_count:p.endCount||null, next_due:next, active:true }).eq('id', p.id)).error);
+      return refetch();
+    }
+    case 'deleteRecurring': sbThrow((await sb.from('recurring').delete().eq('id', payload.id)).error); return refetch();
+
+    case 'calcTrip': return calcTripClient(payload);
+    default: throw new Error('Unknown action: '+action);
+  }
+}
+
+/* one-time importer: pull everything from the old Apps Script backend */
+async function migrateFromApps(oldUrl, secret){
+  const res = await fetch(oldUrl, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getData', payload:{}, secret})});
+  const out = await res.json();
+  if(!out.ok) throw new Error(out.error||'Could not read the old data.');
+  const d = out.data; const counts={};
+  for(const p of (d.people||[])) sbThrow((await sb.from('people').upsert({name:p.name, color:p.color, active:true}, {onConflict:'name'})).error);
+  counts.people=(d.people||[]).length;
+  for(const v of (d.vehicles||[])) sbThrow((await sb.from('vehicles').upsert({name:v.name, mpg:v.mpg}, {onConflict:'name'})).error);
+  for(const p of (d.places||[])) sbThrow((await sb.from('places').upsert({label:p.label, address:p.address}, {onConflict:'label'})).error);
+  for(const q of (d.quick||[])) sbThrow((await sb.from('quick_expenses').upsert({label:q.label, emoji:q.emoji, amount:q.amount, description:q.description, split:q.split==='all'?'all':q.split}, {onConflict:'label'})).error);
+  for(const q of (d.quickTrips||[])) sbThrow((await sb.from('quick_trips').upsert({label:q.label, emoji:q.emoji, origin:q.origin, destination:q.destination, vehicle:q.vehicle, mpg:q.mpg, round_trip:q.roundTrip, split:q.split==='all'?'all':q.split}, {onConflict:'label'})).error);
+  for(const x of (d.expenses||[])) sbThrow((await sb.from('expenses').upsert({id:x.id, ts:new Date(x.ts).toISOString(), name:x.name, description:x.description, paid_by:x.paidBy, total:x.total, type:x.type, split:x.split, receipt_url:x.receiptUrl, tag:x.tag||''}, {onConflict:'id'})).error);
+  counts.expenses=(d.expenses||[]).length;
+  if(d.settings && d.settings.fuelPence) sbThrow((await sb.from('settings').upsert({key:'fuelPence', value:String(d.settings.fuelPence)})).error);
+  if(d.settings && d.settings.ntfyBase) sbThrow((await sb.from('settings').upsert({key:'ntfyBase', value:d.settings.ntfyBase})).error);
+  return counts;
+}
+function applyData(d){
+  if(!d) return;
+  state.people = d.people && d.people.length ? d.people : state.people;
+  state.vehicles = d.vehicles || [];
+  state.quick = d.quick || [];
+  state.quickTrips = d.quickTrips || [];
+  if(d.places) state.places = d.places;
+  if(d.settings) state.settings = d.settings;
+  state.expenses = (d.expenses||[]).sort((a,b)=>b.ts-a.ts);
+  state.recurring = d.recurring || [];
+  if(state.me && !state.people.some(p=>p.name===state.me)) state.me = null;
+}
+async function refresh(){
+  if(!connected) return;
+  try{ state.loading=true; const d = await api('getData'); state.connected=true; applyData(d); }
+  catch(e){ state.connected=false; toast(e.message,'err'); }
+  finally{ state.loading=false; renderAll(); runDueStandingOrders(); }
+}
+
+/* ---------------- Toast ---------------- */
+function toast(msg, kind='ok'){
+  const t = el('div','toast '+kind);
+  const ic = kind==='err' ? '✕' : '✓';
+  t.innerHTML = `<span class="ic">${ic}</span>${esc(msg)}`;
+  $('#toasts').appendChild(t);
+  requestAnimationFrame(()=>t.classList.add('show'));
+  setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(),300); }, 2800);
+}
+
+/* ---------------- Sheet / modal ---------------- */
+function openSheet(builder){
+  const sheet = $('#sheet'); sheet.innerHTML='<div class="grip"></div>';
+  builder(sheet);
+  $('#overlay').classList.add('show');
+}
+function closeSheet(){ $('#overlay').classList.remove('show'); }
+$('#overlay').addEventListener('click', e=>{ if(e.target.id==='overlay') closeSheet(); });
+
+/* ---------------- Balance maths ---------------- */
+function computeBalances(){
+  // debt[a][b] = how much a owes b
+  const debt = {};
+  state.people.forEach(p=>{ debt[p.name]={}; });
+  state.expenses.forEach(x=>{
+    const payer = x.paidBy;
+    Object.keys(x.split||{}).forEach(person=>{
+      if(person===payer) return;
+      if(!debt[person]) debt[person]={};
+      debt[person][payer] = (debt[person][payer]||0) + (Number(x.split[person])||0);
+    });
+  });
+  // net for me vs each other person
+  const me = state.me;
+  const rows = [];
+  state.people.filter(p=>p.name!==me).forEach(p=>{
+    const o = p.name;
+    const theyOweMe = (debt[o] && debt[o][me]) || 0;
+    const iOweThem  = (debt[me] && debt[me][o]) || 0;
+    const net = theyOweMe - iOweThem; // >0 they owe me
+    rows.push({name:o, net});
+  });
+  const overall = rows.reduce((s,r)=>s+r.net,0);
+  return {rows, overall};
+}
+
+/* ============================================================== *
+ *  LOGIN
+ * ============================================================== */
+function renderLogin(){
+  const wrap = $('#login'); wrap.innerHTML='';
+  const hero = el('div','hero');
+  hero.innerHTML = `<div class="mk"><span class="dot"></span>The Kunky Economy</div><p>Shared expenses, settled fairly. Pick your name to start.</p>`;
+  wrap.appendChild(hero);
+  wrap.appendChild(el('div','who','Who are you?'));
+
+  const grid = el('div','who-grid');
+  state.people.forEach(p=>{
+    const c = el('button','who-card');
+    c.innerHTML = `${avatar(p.name,'md')}<span class="nm">${esc(p.name)}</span>`;
+    c.onclick = ()=>{ state.me = p.name; showApp(); };
+    grid.appendChild(c);
+  });
+  const add = el('button','who-card who-add','+ Add someone');
+  add.onclick = addPersonSheet;
+  grid.appendChild(add);
+  wrap.appendChild(grid);
+
+  if(!connected){
+    const note = el('p',null,'Running in preview mode — connect Supabase after signing in to sync.');
+    note.style.cssText='text-align:center;color:var(--faint);font-size:12.5px;margin-top:24px;line-height:1.5';
+    wrap.appendChild(note);
+  }
+}
+
+function addPersonSheet(){
+  openSheet(s=>{
+    s.appendChild(el('h2',null,'Add a person'));
+    s.appendChild(el('p','desc','They’ll be able to log in and be included in splits.'));
+    const f = el('div','field');
+    f.innerHTML = `<label>Name</label><input class="input" id="newPersonName" placeholder="e.g. Sam" autocomplete="off">`;
+    s.appendChild(f);
+    const btn = el('button','btn btn-primary btn-block','Add person');
+    btn.onclick = async ()=>{
+      const name = $('#newPersonName').value.trim();
+      if(!name) return toast('Enter a name','err');
+      if(connected){
+        try{ btn.innerHTML='<span class="spin"></span>'; applyData(await api('addPerson',{name})); toast(name+' added'); }
+        catch(e){ return toast(e.message,'err'); } finally{ btn.innerHTML='Add person'; }
+      } else {
+        if(state.people.some(p=>p.name.toLowerCase()===name.toLowerCase())) return toast('Already added','err');
+        state.people.push({name,color:PALETTE[state.people.length%PALETTE.length]});
+      }
+      closeSheet(); renderAll();
+    };
+    s.appendChild(btn);
+    setTimeout(()=>$('#newPersonName').focus(),100);
+  });
+}
+
+/* ============================================================== *
+ *  APP SHELL
+ * ============================================================== */
+function showApp(){
+  $('#login').style.display='none';
+  $('#app').style.display='flex';
+  renderAll();
+  refresh();
+}
+const TABS = [
+  {id:'balances', label:'Balances', icon:'M3 13h4l2 5 4-12 2 7h6'},
+  {id:'add', label:'Add', icon:'M12 5v14M5 12h14'},
+  {id:'smart', label:'Scan', icon:'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z'},
+  {id:'quick', label:'Quick', icon:'M13 2L4.5 12.5h6L9 22l9-12h-6z'},
+  {id:'trip', label:'Trip', icon:'M5 17h2l1-3h8l1 3h2M6 14l1.5-5h9L18 14M7.5 17.5h.01M16.5 17.5h.01'},
+  {id:'activity', label:'Activity', icon:'M12 8v4l3 2M12 21a9 9 0 100-18 9 9 0 000 18z'},
+];
+function renderTabs(){
+  const bar = $('#tabbar'); bar.innerHTML='';
+  TABS.forEach(t=>{
+    const b = el('button','tab'+(state.tab===t.id?' active':''));
+    b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${t.icon}"/></svg><span>${t.label}</span>`;
+    b.onclick = ()=>{ state.tab=t.id; renderAll(); };
+    bar.appendChild(b);
+  });
+}
+function renderMeChip(){
+  $('#meChip').innerHTML = `${avatar(state.me,'sm')}<span>${esc(state.me)}</span>`;
+  $('#meChip').onclick = switchUserSheet;
+}
+function switchUserSheet(){
+  openSheet(s=>{
+    s.appendChild(el('h2',null,'Switch user'));
+    s.appendChild(el('p','desc','Who’s using the app right now?'));
+    const grid = el('div','who-grid');
+    state.people.forEach(p=>{
+      const c = el('button','who-card');
+      c.innerHTML = `${avatar(p.name,'md')}<span class="nm">${esc(p.name)}</span>`;
+      c.onclick = ()=>{ state.me=p.name; closeSheet(); renderAll(); };
+      grid.appendChild(c);
+    });
+    const add = el('button','who-card who-add','+ Add someone');
+    add.onclick = addPersonSheet;
+    grid.appendChild(add);
+    s.appendChild(grid);
+  });
+}
+
+function renderAll(){
+  if(!state.me){ $('#app').style.display='none'; $('#login').style.display='flex'; renderLogin(); return; }
+  renderMeChip(); renderTabs();
+  $('#gearBtn').classList.toggle('active', state.tab==='settings');
+  $('#gearBtn').onclick = ()=>{ state.tab='settings'; renderAll(); };
+  const v = $('#view'); v.innerHTML='';
+  v.appendChild(connBanner());
+  if(state.tab==='balances') v.appendChild(viewBalances());
+  if(state.tab==='add') v.appendChild(viewAdd());
+  if(state.tab==='smart') v.appendChild(viewSmart());
+  if(state.tab==='quick') v.appendChild(viewQuick());
+  if(state.tab==='trip') v.appendChild(viewTrip());
+  if(state.tab==='activity') v.appendChild(viewActivity());
+  if(state.tab==='settings') v.appendChild(viewSettings());
+}
+
+/* ---------------- Connection banner ---------------- */
+function connBanner(){
+  const c = el('div','conn'+(state.connected?' ok':''));
+  c.innerHTML = `
+    <div class="conn-head">
+      <h3>${state.connected?'Synced with Supabase':'Connect to Supabase'}</h3>
+      <div class="status"><span class="led"></span>${state.connected?'Connected':'Not connected'}</div>
+    </div>`;
+  const body = el('div','conn-body');
+  body.style.display = state.connected ? 'none' : 'block';
+  body.innerHTML = `
+    <p>Paste your Supabase <b>Project URL</b> and <b>anon key</b> (Settings → API). You can also bake them into the top of index.html so it connects automatically.</p>
+    <div class="field" style="margin-bottom:8px"><input class="input" id="sbUrl" placeholder="https://xxxx.supabase.co" value="${esc(SUPABASE_URL)}"></div>
+    <div class="row">
+      <input class="input" id="sbKey" placeholder="anon public key (eyJ…)" value="${esc(SUPABASE_ANON_KEY)}">
+      <button class="btn btn-primary btn-sm" id="sbSave">Connect</button>
+    </div>
+    <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+      <p style="margin-bottom:8px">Moving over from the old Google version? Import everything once:</p>
+      <div class="field" style="margin-bottom:8px"><input class="input" id="oldUrl" placeholder="old Apps Script URL (…/exec)"></div>
+      <div class="row">
+        <input class="input" id="oldSecret" placeholder="old access key (split-…)" value="split-7f3a9c2e8b1d4056">
+        <button class="btn btn-ghost btn-sm" id="importOld">Import</button>
+      </div>
+    </div>`;
+  c.appendChild(body);
+  c.querySelector('.conn-head').onclick = ()=>{ body.style.display = body.style.display==='none'?'block':'none'; };
+  body.querySelector('#sbSave').onclick = async (e)=>{
+    e.stopPropagation();
+    SUPABASE_URL = body.querySelector('#sbUrl').value.trim();
+    SUPABASE_ANON_KEY = body.querySelector('#sbKey').value.trim();
+    if(!SUPABASE_URL || !SUPABASE_ANON_KEY) return toast('Paste both the URL and the anon key','err');
+    const btn = body.querySelector('#sbSave'); btn.innerHTML='<span class="spin"></span>';
+    if(!initSupabase()){ btn.textContent='Connect'; return toast('Could not start the Supabase client','err'); }
+    await refresh();
+    if(state.connected) toast('Connected to Supabase');
+  };
+  body.querySelector('#importOld').onclick = async (e)=>{
+    e.stopPropagation();
+    if(!connected) return toast('Connect to Supabase first','err');
+    const oldUrl = body.querySelector('#oldUrl').value.trim();
+    const secret = body.querySelector('#oldSecret').value.trim();
+    if(!oldUrl) return toast('Paste the old Apps Script URL','err');
+    const btn = body.querySelector('#importOld'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+    try{
+      const counts = await migrateFromApps(oldUrl, secret);
+      toast(`Imported ${counts.people} people, ${counts.expenses} entries`);
+      await refresh();
+    }catch(err){ toast(err.message,'err'); }
+    finally{ btn.disabled=false; btn.textContent='Import'; }
+  };
+  return c;
+}
+
+/* ============================================================== *
+ *  BALANCES
+ * ============================================================== */
+function viewBalances(){
+  const wrap = el('div');
+  const {rows, overall} = computeBalances();
+
+  const kind = Math.abs(overall)<0.01 ? 'zero' : (overall>0?'pos':'neg');
+  const card = el('div','overall '+kind);
+  let lbl, big, sub;
+  if(kind==='zero'){ lbl='All square'; big=money(0); sub='Nobody owes anybody anything right now.'; }
+  else if(kind==='pos'){ lbl='You are owed, overall'; big=money(overall); sub='Across everyone in the group.'; }
+  else { lbl='You owe, overall'; big=money(Math.abs(overall)); sub='Across everyone in the group.'; }
+  card.innerHTML = `<div class="lbl">${lbl}</div><div class="big num">${big}</div><div class="sub">${sub}</div>`;
+  wrap.appendChild(card);
+
+  if(state.people.length>1){
+    const btns = el('div'); btns.style.cssText='display:flex;gap:10px;margin-bottom:18px';
+    const pay = el('button','btn btn-ghost','💸  Record a payment'); pay.style.flex='1';
+    pay.onclick = ()=>transferSheet({});
+    const so = el('button','btn btn-ghost','🔁  Standing orders'); so.style.flex='1';
+    so.onclick = ()=>standingOrdersSheet();
+    btns.appendChild(pay); btns.appendChild(so);
+    wrap.appendChild(btns);
+  }
+  wrap.appendChild(el('div','section-eyebrow','Person by person'));
+  const list = el('div','card');
+  const sorted = rows.slice().sort((a,b)=>Math.abs(b.net)-Math.abs(a.net));
+  if(!sorted.length){
+    list.appendChild(emptyState('🫶','Just you so far','Add more people to start splitting.'));
+  } else {
+    const max = Math.max(1, ...sorted.map(r=>Math.abs(r.net)));
+    sorted.forEach(r=>{
+      const row = el('div','bal-row');
+      const settled = Math.abs(r.net)<0.01;
+      const dir = settled?'zero':(r.net>0?'pos':'neg');
+      const pct = Math.min(100, (Math.abs(r.net)/max)*100);
+      const fill = dir==='zero' ? '' :
+        (dir==='pos'
+          ? `<div class="fill" style="left:50%;width:${pct/2}%;background:var(--pos)"></div>`
+          : `<div class="fill" style="right:50%;width:${pct/2}%;background:var(--neg)"></div>`);
+      row.innerHTML = `
+        ${avatar(r.name,'md')}
+        <div class="bal-info">
+          <div class="nm">${esc(r.name)}</div>
+          <div class="meta">${settled?'Settled up':(r.net>0?'owes you':'you owe')}</div>
+          <div class="flow"><div class="fill" style="left:50%;width:1px;background:var(--line)"></div>${fill}</div>
+        </div>
+        <div class="bal-amt">
+          <div class="v ${dir==='pos'?'pos-c':dir==='neg'?'neg-c':'zero-c'} num">${settled?'—':money(Math.abs(r.net))}</div>
+          <div class="d ${dir==='pos'?'pos-c':dir==='neg'?'neg-c':'zero-c'}">${settled?'':(r.net>0?'owed':'you owe')}</div>
+        </div>`;
+      row.onclick = ()=>personDetailSheet(r.name);
+      list.appendChild(row);
+    });
+  }
+  wrap.appendChild(list);
+  return wrap;
+}
+
+function personDetailSheet(other){
+  const linked = state.expenses.filter(x=>involvesPair(x,state.me,other));
+  const net = computeBalances().rows.find(r=>r.name===other);
+  const netVal = net ? net.net : 0;
+  openSheet(s=>{
+    s.appendChild(el('h2',null,`You & ${esc(other)}`));
+    const settled = Math.abs(netVal)<0.01;
+    s.appendChild(el('p','desc', settled ? 'You’re all settled up.' :
+      (netVal>0 ? `${esc(other)} owes you ${money(netVal)}.` : `You owe ${esc(other)} ${money(-netVal)}.`)));
+
+    // Settle-up shortcut, prefilled
+    const pay = el('button','btn btn-primary btn-block', settled ? '💸  Record a payment' :
+      (netVal<0 ? `💸  Pay ${esc(other)} ${money(-netVal)}` : `💸  Record ${esc(other)} paying you`));
+    pay.style.marginBottom='16px';
+    pay.onclick = ()=>{ closeSheet(); transferSheet({other, dir: netVal<0?'out':'in', amount: settled?'':Math.abs(netVal).toFixed(2)}); };
+    s.appendChild(pay);
+
+    if(!linked.length){ s.appendChild(emptyState('🧾','Nothing between you yet','No expenses or payments link you two so far.')); return; }
+    s.appendChild(el('div','section-eyebrow','History'));
+    const list = el('div','card'); list.style.marginBottom='8px';
+    linked.forEach(x=>{
+      const youPaid = x.paidBy===state.me;
+      const amt = youPaid ? (x.split[other]||0) : (x.split[state.me]||0);
+      const isT = x.type==='transfer';
+      const label = isT ? (youPaid?'You paid '+esc(other):esc(other)+' paid you')
+                        : (youPaid?'You paid · they owe':'They paid · you owe');
+      const row = el('div','act-row');
+      row.innerHTML = `<div class="act-ic">${typeIcon(x)}</div>
+        <div class="act-main"><div class="at">${esc(x.name)}</div>
+        <div class="am">${label} · ${fmtDate(x.ts)}</div></div>
+        <div class="act-right"><div class="tot num ${youPaid?'pos-c':'neg-c'}">${youPaid?'+':'−'}${money(amt)}</div></div>`;
+      list.appendChild(row);
+    });
+    s.appendChild(list);
+  });
+}
+
+/* ---- Record a payment / transfer ---- */
+function transferSheet(opts){
+  opts = opts || {};
+  const fs = { dir: opts.dir || 'out', other: opts.other || null, date: todayISO() };
+  openSheet(s=>{
+    s.appendChild(el('h2',null,'Record a payment'));
+    s.appendChild(el('p','desc','Money sent directly to settle up — it counts against what’s owed.'));
+
+    const dirF = el('div','field');
+    dirF.innerHTML = `<label>Direction</label>
+      <div class="seg" id="trDir">
+        <button data-d="out" class="${fs.dir==='out'?'active':''}">You paid</button>
+        <button data-d="in" class="${fs.dir==='in'?'active':''}">You were paid</button>
+      </div>`;
+    s.appendChild(dirF);
+
+    const whoF = el('div','field'); whoF.innerHTML = `<label id="whoLbl"></label><div class="people-grid" id="trWho"></div>`;
+    s.appendChild(whoF);
+
+    const amtF = el('div','field');
+    amtF.innerHTML = `<label>Amount</label><div class="money-input"><span class="sym">£</span>
+      <input class="input" id="trAmt" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${esc(opts.amount||'')}"></div>`;
+    s.appendChild(amtF);
+
+    const dateF = el('div','field');
+    dateF.innerHTML = `<label>Date</label><input class="input" id="trDate" type="date" value="${fs.date}" max="${todayISO()}">`;
+    s.appendChild(dateF);
+
+    const noteF = el('div','field');
+    noteF.innerHTML = `<label>Note <span class="hint">optional</span></label><input class="input" id="trNote" placeholder="e.g. bank transfer">`;
+    s.appendChild(noteF);
+
+    const btn = el('button','btn btn-primary btn-block','Record payment');
+    s.appendChild(btn);
+
+    function drawWho(){
+      whoF.querySelector('#whoLbl').textContent = fs.dir==='out' ? 'Paid to' : 'Received from';
+      const g = whoF.querySelector('#trWho'); g.innerHTML='';
+      state.people.filter(p=>p.name!==state.me).forEach(p=>{
+        const b = el('button','pchip'+(fs.other===p.name?' on':''));
+        b.innerHTML = `${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+        b.onclick = ()=>{ fs.other=p.name; drawWho(); };
+        g.appendChild(b);
+      });
+    }
+    drawWho();
+    dirF.querySelector('#trDir').addEventListener('click', e=>{
+      const b=e.target.closest('button'); if(!b) return; fs.dir=b.dataset.d;
+      [...dirF.querySelectorAll('#trDir button')].forEach(x=>x.classList.toggle('active',x===b));
+      drawWho();
+    });
+
+    btn.onclick = async ()=>{
+      const amount = Number(s.querySelector('#trAmt').value)||0;
+      if(!fs.other) return toast('Choose a person','err');
+      if(!(amount>0)) return toast('Enter an amount','err');
+      const from = fs.dir==='out' ? state.me : fs.other;
+      const to   = fs.dir==='out' ? fs.other : state.me;
+      const note = s.querySelector('#trNote').value.trim();
+      const payload = {
+        name:`Payment: ${from} → ${to}`, description:note, paidBy:from, total:amount,
+        split:{ [to]:amount }, type:'transfer', ts: tsFromISO(s.querySelector('#trDate').value)
+      };
+      btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+      try{
+        if(connected){ applyData(await api('addExpense',payload)); }
+        else { state.expenses.unshift({id:'local_'+Date.now(),receiptUrl:'',...payload}); state.expenses.sort((a,b)=>b.ts-a.ts); }
+        closeSheet(); toast('Payment recorded'); state.tab='balances'; renderAll();
+      }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Record payment'; }
+    };
+  });
+}
+
+/* ---- Standing orders / recurring payments ---- */
+function standingOrdersSheet(){
+  openSheet(s=>{
+    s.appendChild(el('h2',null,'Your standing orders'));
+    s.appendChild(el('p','desc','Simulated recurring payments you’ve set up. Each applies automatically when its date arrives — no real money moves.'));
+    const rules = (state.recurring||[]).filter(r=>r.from===state.me);
+    if(!rules.length){ s.appendChild(emptyState('🔁','None set up','Mirror a standing order or direct debit you pay so balances update on their own.')); }
+    else {
+      const list=el('div','card'); list.style.padding='4px 14px';
+      rules.forEach(r=>{
+        const row=el('div','act-row');
+        row.innerHTML=`<div class="act-ic">🔁</div>
+          <div class="act-main"><div class="at">${esc(r.from)} → ${esc(r.to)} · ${money(r.amount)}</div>
+          <div class="am">${ruleSummary(r)} · next ${fmtLong(r.nextDue)}</div></div>
+          <button class="btn btn-ghost btn-sm rcEdit">Edit</button>`;
+        row.querySelector('.rcEdit').onclick=()=>{ closeSheet(); recurringEditorSheet(r); };
+        list.appendChild(row);
+      });
+      s.appendChild(list);
+    }
+    const add=el('button','btn btn-primary btn-block','+ New standing order'); add.style.marginTop='12px';
+    add.onclick=()=>{ closeSheet(); recurringEditorSheet(null); };
+    s.appendChild(add);
+  });
+}
+
+function recurringEditorSheet(existing){
+  const rc = existing ? {
+    id:existing.id, from:existing.from, to:existing.to, amount:existing.amount,
+    repeat:repeatV(existing), dayMode:existing.dayMode||'dow', dayOfMonth:existing.dayOfMonth||1,
+    weekPos:existing.weekPos!=null?existing.weekPos:3, weekday:existing.weekday!=null?existing.weekday:0,
+    start:existing.start, endMode:existing.endMode||'never', endDate:existing.endDate||'', endCount:existing.endCount||12
+  } : {
+    id:null, from:state.me, to:null, amount:'', repeat:'m1', dayMode:'dow', dayOfMonth:1, weekPos:3, weekday:0,
+    start:todayISO(), endMode:'never', endDate:'', endCount:12
+  };
+  function deriveFromStart(){ const d=parseISO(rc.start); rc.dayOfMonth=d.getDate(); rc.weekday=d.getDay(); rc.weekPos=Math.min(4,Math.ceil(d.getDate()/7)); }
+  if(!existing) deriveFromStart();
+
+  openSheet(s=>{
+    s.appendChild(el('h2',null, existing?'Edit standing order':'New standing order'));
+    s.appendChild(el('p','desc','Enter exactly what your bank shows. It runs automatically on each date — no real money moves.'));
+    const box=el('div'); s.appendChild(box);
+    function render(){
+      box.innerHTML='';
+      const ft=el('div','field'); ft.innerHTML=`<label>Payment to <span class="hint">from you (${esc(rc.from)})</span></label><div class="people-grid" id="rcTo"></div>`;
+      box.appendChild(ft);
+      const gto=ft.querySelector('#rcTo');
+      state.people.filter(p=>p.name!==rc.from).forEach(p=>{ const b=el('button','pchip'+(rc.to===p.name?' on':''));
+        b.innerHTML=`${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+        b.onclick=()=>{ rc.to=p.name; render(); }; gto.appendChild(b); });
+
+      const amt=el('div','field'); amt.innerHTML=`<label>Amount</label><div class="money-input"><span class="sym">£</span><input class="input" id="rcAmt" type="number" step="0.01" inputmode="decimal" placeholder="0.00" value="${rc.amount!==''?rc.amount:''}" style="padding-left:30px;font-family:var(--display);font-size:18px;font-weight:600"></div>`;
+      box.appendChild(amt); amt.querySelector('#rcAmt').oninput=e=>rc.amount=e.target.value;
+
+      const rep=el('div','field'); rep.innerHTML=`<label>Repeats</label><select class="input" id="rcRep">${REPEATS.map(x=>`<option value="${x.v}" ${rc.repeat===x.v?'selected':''}>${x.label}</option>`).join('')}</select>`;
+      box.appendChild(rep); rep.querySelector('#rcRep').onchange=e=>{ rc.repeat=e.target.value; render(); };
+      const rObj=repeatOf(rc.repeat);
+
+      const st=el('div','field'); st.innerHTML=`<label>Start date <span class="hint">first payment</span></label><input class="input" id="rcStart" type="date" min="${todayISO()}" value="${rc.start}">`;
+      box.appendChild(st); st.querySelector('#rcStart').onchange=e=>{ rc.start=e.target.value; deriveFromStart(); render(); };
+
+      if(rObj.freq==='monthly'){
+        const on=el('div','field'); on.innerHTML=`<label>On</label>
+          <div class="seg" id="rcMode"><button data-m="dow" class="${rc.dayMode==='dow'?'active':''}">A weekday</button><button data-m="dom" class="${rc.dayMode==='dom'?'active':''}">A date</button></div>
+          <div id="rcOn" style="margin-top:10px"></div>`;
+        box.appendChild(on);
+        on.querySelector('#rcMode').onclick=e=>{ const b=e.target.closest('button'); if(!b)return; rc.dayMode=b.dataset.m; render(); };
+        const onBox=on.querySelector('#rcOn');
+        if(rc.dayMode==='dow'){
+          onBox.innerHTML=`<div style="display:flex;gap:8px">
+            <select class="input" id="rcPos">${[['1','1st'],['2','2nd'],['3','3rd'],['4','4th'],['0','last']].map(([v,l])=>`<option value="${v}" ${String(rc.weekPos)===v?'selected':''}>${l}</option>`).join('')}</select>
+            <select class="input" id="rcWd">${WEEKDAYS.map((w,i)=>`<option value="${i}" ${rc.weekday===i?'selected':''}>${w}</option>`).join('')}</select></div>`;
+          onBox.querySelector('#rcPos').onchange=e=>rc.weekPos=Number(e.target.value);
+          onBox.querySelector('#rcWd').onchange=e=>rc.weekday=Number(e.target.value);
+        } else {
+          onBox.innerHTML=`<select class="input" id="rcDom">${Array.from({length:31},(_,i)=>i+1).map(d=>`<option value="${d}" ${rc.dayOfMonth===d?'selected':''}>${ordinal(d)}</option>`).join('')}<option value="0" ${rc.dayOfMonth===0?'selected':''}>last day</option></select>`;
+          onBox.querySelector('#rcDom').onchange=e=>rc.dayOfMonth=Number(e.target.value);
+        }
+      }
+
+      const end=el('div','field'); end.innerHTML=`<label>Ends</label>
+        <div class="seg" id="rcEnd"><button data-e="never" class="${rc.endMode==='never'?'active':''}">Never</button><button data-e="date" class="${rc.endMode==='date'?'active':''}">On date</button><button data-e="count" class="${rc.endMode==='count'?'active':''}">After N</button></div>
+        <div id="rcEndDetail" style="margin-top:10px"></div>`;
+      box.appendChild(end);
+      end.querySelector('#rcEnd').onclick=e=>{ const b=e.target.closest('button'); if(!b)return; rc.endMode=b.dataset.e; render(); };
+      const edet=end.querySelector('#rcEndDetail');
+      if(rc.endMode==='date'){ edet.innerHTML=`<input class="input" id="rcEndDate" type="date" min="${rc.start}" value="${rc.endDate||''}">`; edet.querySelector('#rcEndDate').onchange=e=>rc.endDate=e.target.value; }
+      else if(rc.endMode==='count'){ edet.innerHTML=`<input class="input" id="rcEndCount" type="number" min="1" step="1" value="${rc.endCount||12}"><div class="hint" style="margin-top:6px">Total number of payments</div>`; edet.querySelector('#rcEndCount').oninput=e=>rc.endCount=Number(e.target.value)||1; }
+
+      const rule=ruleObj(rc); const nd=firstDue(rule, rc.start);
+      const prev=el('div','split-summary good'); prev.innerHTML=`<span>First payment ${fmtLong(nd)}</span><span class="v num">${rc.amount?money(Number(rc.amount)):''}</span>`;
+      box.appendChild(prev);
+
+      const btn=el('button','btn btn-primary btn-block', existing?'Review & save':'Review & set up'); btn.style.marginTop='6px';
+      btn.onclick=()=>confirmRecurring(rc, existing);
+      box.appendChild(btn);
+
+      if(existing){
+        const del=el('button','btn btn-block','Delete this standing order');
+        del.style.cssText='margin-top:10px;color:var(--neg);background:var(--neg-soft)';
+        del.onclick=async ()=>{ del.disabled=true; del.innerHTML='<span class="spin"></span>'; try{ applyData(await api('deleteRecurring',{id:existing.id})); closeSheet(); toast('Standing order deleted'); renderAll(); }catch(e){ toast(e.message,'err'); del.disabled=false; del.textContent='Delete this standing order'; } };
+        box.appendChild(el('div',null,'<div style="font-size:12px;color:var(--faint);text-align:center;margin-top:10px">Deleting stops future runs — payments already made stay in history.</div>'));
+        box.appendChild(del);
+      }
+    }
+    render();
+  });
+}
+
+function confirmRecurring(rc, existing){
+  if(!rc.to) return toast('Choose who it goes to','err');
+  if(rc.from===rc.to) return toast('From and to must be different','err');
+  if(!(Number(rc.amount)>0)) return toast('Enter an amount','err');
+  if(rc.start < todayISO()) return toast('Start date must be today or later','err');
+  const r=ruleObj(rc);
+  openSheet(s=>{
+    s.appendChild(el('h2',null,'Before you set this up'));
+    const warn=el('div','note'); warn.style.cssText='background:#FCEBE9;border:1px solid #E5564B55;margin-top:2px';
+    warn.innerHTML=`<span class="ni">⚠️</span><span><b>This does not move any real money.</b> It only simulates the payment in the app on each date. Make sure the real standing order or direct debit is set up in your bank, keep an eye that balances change as you expect, and if you ever cancel the real one, delete it here too.</span>`;
+    s.appendChild(warn);
+    const sumC=el('div','card'); sumC.style.cssText='padding:16px;margin:14px 0;text-align:center';
+    sumC.innerHTML=`<div class="num" style="font-size:28px;font-weight:700">${money(Number(rc.amount))}</div>
+      <div style="margin-top:6px;font-weight:600">${esc(rc.from)} → ${esc(rc.to)}</div>
+      <div style="color:var(--muted);font-size:13px;margin-top:4px">${ruleSummary(r)}</div>
+      <div style="color:var(--faint);font-size:12.5px;margin-top:3px">from ${fmtLong(firstDue(r, rc.start))}${rc.endMode==='date'?' until '+fmtLong(rc.endDate):rc.endMode==='count'?` · ${rc.endCount} payments`:' · no end date'}</div>`;
+    s.appendChild(sumC);
+    const btn=el('button','btn btn-primary btn-block','I understand — set it up');
+    btn.onclick=async ()=>{
+      btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+      const payload={ id:rc.id, from:rc.from, to:rc.to, amount:Number(rc.amount), freq:r.freq, interval:r.interval, dayMode:r.dayMode, dayOfMonth:r.dayOfMonth, weekPos:r.weekPos, weekday:r.weekday, start:rc.start, endMode:rc.endMode, endDate:rc.endMode==='date'?rc.endDate:null, endCount:rc.endMode==='count'?rc.endCount:null };
+      try{ applyData(await api(existing?'updateRecurring':'addRecurring', payload)); closeSheet(); toast(existing?'Standing order updated':'Standing order set up'); renderAll(); }
+      catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='I understand — set it up'; }
+    };
+    s.appendChild(btn);
+    const back=el('button','btn btn-ghost btn-block','Go back'); back.style.marginTop='10px';
+    back.onclick=()=>recurringEditorSheet(existing);
+    s.appendChild(back);
+  });
+}
+
+
+const draft = { receipt:null };
+function viewAdd(prefill){
+  draft.receipt = null;
+  const wrap = el('div');
+  wrap.appendChild(el('div','page-title','Add an expense'));
+  wrap.appendChild(el('div','page-sub','Log what was spent and split it however you like.'));
+
+  const form = el('div');
+  form.innerHTML = `
+    <div class="field"><label>Name</label>
+      <input class="input" id="exName" placeholder="e.g. Tesco shop" autocomplete="off" value="${esc(prefill&&prefill.name||'')}"></div>
+    <div class="field"><label>Amount</label>
+      <div class="money-input"><span class="sym">£</span>
+      <input class="input" id="exTotal" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${prefill&&prefill.total||''}"></div></div>
+    <div class="field"><label>Date</label>
+      <input class="input" id="exDate" type="date" value="${(prefill&&prefill.date)||todayISO()}" max="${todayISO()}"></div>
+    <div class="field"><label>Description <span class="hint">optional</span></label>
+      <textarea class="input" id="exDesc" placeholder="Anything worth noting">${esc(prefill&&prefill.description||'')}</textarea></div>
+    <div class="field"><label>Tag <span class="hint">optional — group trips, holidays, nights out…</span></label>
+      <input class="input" id="exTag" list="exTagList" placeholder="e.g. Lake District weekend" autocomplete="off" value="${esc(prefill&&prefill.tag||'')}">
+      ${tagDatalist('exTagList')}</div>
+    <div class="field"><label>Paid by</label>
+      <div class="people-grid" id="paidByGrid"></div></div>
+    <div class="field"><label>Split between</label>
+      <div class="people-grid" id="splitGrid"></div></div>
+    <div class="field"><label>How to split</label>
+      <div class="seg seg-4" id="splitMode">
+        <button data-m="equal" class="active">Equal</button>
+        <button data-m="shares">Shares</button>
+        <button data-m="exact">Exact</button>
+        <button data-m="percent">Percent</button>
+      </div>
+      <div id="splitDetail" style="margin-top:12px"></div></div>
+    <div class="field"><label>Receipt <span class="hint">optional</span></label>
+      <label class="upload" for="exFile">
+        <div class="ic">📎</div>
+        <div><div class="t">Attach a receipt</div><div class="s">Photo or PDF — images are compressed automatically</div></div>
+      </label>
+      <input type="file" id="exFile" accept="image/*,application/pdf" style="display:none">
+      <div id="receiptPrev"></div></div>
+    <button class="btn btn-primary btn-block" id="saveExpense">Save expense</button>
+  `;
+  wrap.appendChild(form);
+
+  // local form state
+  const fs = {
+    paidBy: prefill&&prefill.paidBy || state.me,
+    selected: new Set(prefill&&prefill.split ? Object.keys(prefill.split) : state.people.map(p=>p.name)),
+    mode:'equal',
+    shares:{}, exact:{}, remainder:null, pct:{}, locked:{}
+  };
+
+  function drawPaidBy(){
+    const g = form.querySelector('#paidByGrid'); g.innerHTML='';
+    state.people.forEach(p=>{
+      const b = el('button','pchip'+(fs.paidBy===p.name?' on':''));
+      b.innerHTML = `${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+      b.onclick = ()=>{ fs.paidBy=p.name; drawPaidBy(); drawDetail(); };
+      g.appendChild(b);
+    });
+  }
+  function drawSplit(){
+    const g = form.querySelector('#splitGrid'); g.innerHTML='';
+    const all = el('button','pchip'+(fs.selected.size===state.people.length?' on':''));
+    all.innerHTML = `Everyone<span class="tick">✓</span>`;
+    all.onclick = ()=>{
+      if(fs.selected.size===state.people.length) fs.selected.clear();
+      else state.people.forEach(p=>fs.selected.add(p.name));
+      drawSplit(); drawDetail();
+    };
+    g.appendChild(all);
+    state.people.forEach(p=>{
+      const b = el('button','pchip'+(fs.selected.has(p.name)?' on':''));
+      b.innerHTML = `${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+      b.onclick = ()=>{ fs.selected.has(p.name)?fs.selected.delete(p.name):fs.selected.add(p.name); drawSplit(); drawDetail(); };
+      g.appendChild(b);
+    });
+  }
+  function initPct(){
+    const names=[...fs.selected], n=names.length||1;
+    const out={}; names.forEach(nm=> out[nm]=100/n); fs.pct=out; fs.locked={};
+  }
+  function ensurePct(){
+    const names=[...fs.selected];
+    const ok = Object.keys(fs.pct).length===names.length && names.every(n=>fs.pct[n]!=null);
+    if(!ok) initPct();
+  }
+  function rebalancePct(P, v){
+    const names=[...fs.selected];
+    const lockedSum = names.filter(n=>n!==P && fs.locked[n]).reduce((s,n)=>s+(fs.pct[n]||0),0);
+    const available = Math.max(0, 100 - lockedSum);
+    v = Math.max(0, Math.min(available, v));
+    const unlocked = names.filter(n=>n!==P && !fs.locked[n]);
+    fs.pct[P]=v;
+    if(!unlocked.length){ fs.pct[P]=available; return; }
+    // split what's left evenly across the other unlocked people (fractional, so amounts stay equal to the penny)
+    const each = (available - v)/unlocked.length;
+    unlocked.forEach(o=> fs.pct[o]=each);
+  }
+  function pctAmounts(total){
+    const names=[...fs.selected], cents=Math.round(total*100);
+    const raw=names.map(nm=> cents*(fs.pct[nm]||0)/100), cc=raw.map(x=>Math.floor(x));
+    const order=names.map((nm,i)=>({i,f:raw[i]-cc[i]})).sort((a,b)=>b.f-a.f);
+    let rem=cents-cc.reduce((a,b)=>a+b,0), k=0;
+    while(rem>0){ cc[order[k%order.length].i]+=1; rem--; k++; }
+    while(rem<0){ const idx=order[order.length-1-(k%order.length)].i; if(cc[idx]>0){cc[idx]-=1; rem++;} k++; }
+    const out={}; names.forEach((nm,i)=>out[nm]=cc[i]/100); return out;
+  }
+  function currentSplit(){
+    const names = [...fs.selected];
+    const total = Number(form.querySelector('#exTotal').value)||0;
+    const cents = Math.round(total*100);
+    if(fs.mode==='equal'){
+      const n=names.length||1, base=Math.floor(cents/n); let rem=cents-base*n;
+      const out={}; names.forEach((nm,i)=>out[nm]=(base+(i<rem?1:0))/100);
+      return {split:out, total, sum:total, ok:names.length>0&&total>0};
+    }
+    if(fs.mode==='shares'){
+      const w = names.map(nm=> Math.max(0, parseInt(fs.shares[nm]!=null?fs.shares[nm]:1,10)||0));
+      const totalW = w.reduce((a,b)=>a+b,0);
+      const out={};
+      if(totalW<=0){ names.forEach(nm=>out[nm]=0); return {split:out, total, sum:0, ok:false, totalW:0}; }
+      const raw = names.map((nm,i)=> cents*w[i]/totalW);
+      const cc = raw.map(x=>Math.floor(x));
+      let rem = cents - cc.reduce((a,b)=>a+b,0);
+      const order = names.map((nm,i)=>({i, f: raw[i]-cc[i]})).sort((a,b)=>b.f-a.f);
+      for(let k=0;k<rem;k++){ cc[order[k%order.length].i]+=1; }
+      names.forEach((nm,i)=> out[nm]=cc[i]/100);
+      return {split:out, total, sum:total, ok:names.length>0&&total>0, totalW};
+    }
+    if(fs.mode==='percent'){
+      ensurePct();
+      return {split:pctAmounts(total), total, sum:total, ok:names.length>0&&total>0};
+    }
+    // exact (optionally one person covers the rest)
+    const out={}; let fixedSum=0;
+    const rem = (fs.remainder && fs.selected.has(fs.remainder)) ? fs.remainder : null;
+    names.forEach(nm=>{ if(nm===rem) return; const v=Number(fs.exact[nm])||0; out[nm]=v; fixedSum+=v; });
+    if(rem){
+      const remAmt = Math.round((total-fixedSum)*100)/100;
+      out[rem]=remAmt;
+      return {split:out, total, sum:total, fixedSum, remAmt, remainder:rem, ok:names.length>0&&total>0&&remAmt>=-0.001};
+    }
+    let sum=0; names.forEach(nm=> sum+=(out[nm]||0));
+    return {split:out, total, sum, ok:names.length>0&&total>0&&Math.abs(sum-total)<0.011};
+  }
+  function drawDetail(){
+    const d = form.querySelector('#splitDetail'); d.innerHTML='';
+    const names = [...fs.selected];
+    if(!names.length){ d.innerHTML='<div class="split-summary bad">Pick at least one person to split between.</div>'; updateSave(); return; }
+    const cs = currentSplit();
+    const box = el('div','card'); box.style.padding='4px 14px';
+
+    if(fs.mode==='equal'){
+      names.forEach(nm=>{
+        const r = el('div','split-row');
+        r.innerHTML = `${avatar(nm,'sm')}<span class="name">${esc(nm)}</span><span class="num" style="font-weight:600">${money(cs.split[nm])}</span>`;
+        box.appendChild(r);
+      });
+      d.appendChild(box);
+      const s = el('div','split-summary good');
+      s.innerHTML = `<span>${names.length} ${names.length===1?'person':'people'} · equal shares</span><span class="v num">${money(cs.total)}</span>`;
+      d.appendChild(s);
+    }
+    else if(fs.mode==='shares'){
+      names.forEach(nm=>{
+        const wv = fs.shares[nm]!=null?fs.shares[nm]:1;
+        const r = el('div','split-row');
+        r.innerHTML = `${avatar(nm,'sm')}<span class="name" style="flex:1">${esc(nm)}</span>
+          <div class="stepper"><button class="st-dn" data-nm="${esc(nm)}">−</button><span class="st-v">${wv}</span><button class="st-up" data-nm="${esc(nm)}">+</button></div>
+          <span class="num" style="font-weight:600;min-width:62px;text-align:right">${money(cs.split[nm]||0)}</span>`;
+        box.appendChild(r);
+      });
+      d.appendChild(box);
+      box.querySelectorAll('.st-up').forEach(b=> b.onclick=()=>{ const nm=b.dataset.nm; fs.shares[nm]=(fs.shares[nm]!=null?+fs.shares[nm]:1)+1; drawDetail(); });
+      box.querySelectorAll('.st-dn').forEach(b=> b.onclick=()=>{ const nm=b.dataset.nm; fs.shares[nm]=Math.max(0,(fs.shares[nm]!=null?+fs.shares[nm]:1)-1); drawDetail(); });
+      const s = el('div','split-summary '+(cs.ok?'good':'bad'));
+      s.innerHTML = `<span>Proportional · ${cs.totalW||0} share${cs.totalW===1?'':'s'}</span><span class="v num">${money(cs.total)}</span>`;
+      d.appendChild(s);
+    }
+    else if(fs.mode==='percent'){
+      ensurePct();
+      const refs={};
+      names.forEach(nm=>{
+        const row = el('div','pct-row');
+        row.innerHTML = `<div class="pct-head">
+            <button class="pct-lock" title="Lock this share">🔓</button>
+            ${avatar(nm,'sm')}<span class="name" style="flex:1">${esc(nm)}</span>
+            <span class="pct-mini"><span class="numbox"><input class="pct-in pin" type="number" inputmode="numeric" min="0" max="100" step="1"><span class="nstep"><button class="nup" type="button">▲</button><button class="ndn" type="button">▼</button></span></span>%</span>
+            <span class="pct-mini">£<span class="numbox amt"><input class="pct-in ain" type="number" inputmode="decimal" min="0" step="0.01"><span class="nstep"><button class="nup" type="button">▲</button><button class="ndn" type="button">▼</button></span></span></span>
+          </div>
+          <input type="range" class="pct-slider" min="0" max="100" step="1" value="${fs.pct[nm]||0}">`;
+        box.appendChild(row);
+        const nb = row.querySelectorAll('.numbox');
+        refs[nm] = {
+          row, lock:row.querySelector('.pct-lock'), sl:row.querySelector('.pct-slider'),
+          pin:nb[0].querySelector('input'), pinUp:nb[0].querySelector('.nup'), pinDn:nb[0].querySelector('.ndn'),
+          ain:nb[1].querySelector('input'), ainUp:nb[1].querySelector('.nup'), ainDn:nb[1].querySelector('.ndn')
+        };
+      });
+      d.appendChild(box);
+      const s = el('div','split-summary good'); s.id='pctSummary'; d.appendChild(s);
+
+      const fmtPct = p => { const r=Math.round((p||0)*10)/10; return Number.isInteger(r)?String(r):r.toFixed(1); };
+      const refresh = (activeEl)=>{
+        const total = Number(form.querySelector('#exTotal').value)||0;
+        const amts = pctAmounts(total);
+        const lockedSum = names.filter(n=>fs.locked[n]).reduce((acc,n)=>acc+(fs.pct[n]||0),0);
+        const available = Math.max(0,100-lockedSum);
+        names.forEach(nm=>{ const rf=refs[nm], locked=!!fs.locked[nm];
+          // slider works in pennies when there's a total, so it nudges money penny by penny
+          if(total>0){ rf.sl.step=1; rf.sl.max = Math.max(1, Math.round((locked?100:available)*total)); if(rf.sl!==activeEl) rf.sl.value = Math.round((fs.pct[nm]||0)*total); }
+          else { rf.sl.step=1; rf.sl.max = locked?100:available; if(rf.sl!==activeEl) rf.sl.value = Math.round(fs.pct[nm]||0); }
+          rf.sl.disabled=locked;
+          if(rf.pin!==document.activeElement) rf.pin.value=fmtPct(fs.pct[nm]);
+          if(rf.ain!==document.activeElement) rf.ain.value=(amts[nm]||0).toFixed(2);
+          const amtOff = locked || !(total>0);
+          rf.pin.disabled=locked; rf.ain.disabled=amtOff;
+          rf.pinUp.disabled=locked; rf.pinDn.disabled=locked; rf.ainUp.disabled=amtOff; rf.ainDn.disabled=amtOff;
+          rf.lock.textContent=locked?'🔒':'🔓'; rf.lock.classList.toggle('on',locked);
+          rf.row.classList.toggle('locked',locked);
+        });
+        const nL=names.filter(n=>fs.locked[n]).length;
+        s.innerHTML = `<span>Percentages · always 100%${nL?` · ${nL} locked`:''}</span><span class="v num">${money(total)}</span>`;
+      };
+      const total0 = ()=> Number(form.querySelector('#exTotal').value)||0;
+      const bumpPct = (nm,d)=>{ if(fs.locked[nm]) return; rebalancePct(nm, (fs.pct[nm]||0)+d); refresh(); updateSave(); };
+      const bumpAmt = (nm,d)=>{ if(fs.locked[nm]) return; const t=total0(); if(t<=0) return; const cur=(fs.pct[nm]||0)/100*t; rebalancePct(nm, (cur+d)/t*100); refresh(); updateSave(); };
+      names.forEach(nm=>{
+        const rf=refs[nm];
+        rf.sl.oninput = ()=>{ if(fs.locked[nm]) return; const t=total0(); const vPct = t>0 ? Number(rf.sl.value)/t : Number(rf.sl.value); rebalancePct(nm, vPct); refresh(rf.sl); updateSave(); };
+        rf.pin.onchange = ()=>{ if(fs.locked[nm]) return; rebalancePct(nm, Number(rf.pin.value)||0); refresh(); updateSave(); };
+        rf.ain.onchange = ()=>{ if(fs.locked[nm]) return; const t=total0(); if(t>0) rebalancePct(nm, (Number(rf.ain.value)||0)/t*100); refresh(); updateSave(); };
+        rf.pinUp.onclick=()=>bumpPct(nm,1); rf.pinDn.onclick=()=>bumpPct(nm,-1);
+        rf.ainUp.onclick=()=>bumpAmt(nm,0.01); rf.ainDn.onclick=()=>bumpAmt(nm,-0.01);
+        rf.lock.onclick = ()=>{ fs.locked[nm]=!fs.locked[nm]; refresh(); updateSave(); };
+      });
+      refresh();
+    }
+    else {
+      names.forEach(nm=>{
+        const isRem = cs.remainder===nm;
+        const r = el('div','split-row');
+        const amtCell = isRem
+          ? `<span class="num" style="font-weight:600;min-width:70px;text-align:right">${money(cs.split[nm]||0)}</span>`
+          : `<div class="money-input amt"><span class="sym" style="font-size:13px">£</span><input class="input" data-nm="${esc(nm)}" type="number" inputmode="decimal" step="0.01" placeholder="0.00" value="${fs.exact[nm]!=null?fs.exact[nm]:''}" style="padding-left:24px;font-size:15px"></div>`;
+        r.innerHTML = `${avatar(nm,'sm')}<span class="name" style="flex:1">${esc(nm)}</span>
+          <button class="rest-btn${isRem?' on':''}" data-nm="${esc(nm)}" title="Cover the remainder">rest</button>${amtCell}`;
+        box.appendChild(r);
+      });
+      d.appendChild(box);
+      box.querySelectorAll('input[data-nm]').forEach(inp=>{ inp.oninput=()=>{ fs.exact[inp.dataset.nm]=inp.value; updateExactSummary(currentSplit()); updateSave(); }; });
+      box.querySelectorAll('.rest-btn').forEach(b=> b.onclick=()=>{ const nm=b.dataset.nm; fs.remainder = (fs.remainder===nm)?null:nm; drawDetail(); });
+      const s = el('div','split-summary'); s.id='exactSummary'; d.appendChild(s);
+      updateExactSummary(cs);
+    }
+    updateSave();
+  }
+  function updateExactSummary(cs){
+    const s = form.querySelector('#exactSummary'); if(!s) return;
+    if(cs.remainder){
+      const ok = cs.remAmt>=-0.001;
+      s.className = 'split-summary '+(ok?'good':'bad');
+      s.innerHTML = ok
+        ? `<span>${esc(cs.remainder)} covers the rest</span><span class="v num">${money(cs.remAmt)}</span>`
+        : `<span>${money(-cs.remAmt)} over the total</span><span class="v num">${money(cs.fixedSum)} / ${money(cs.total)}</span>`;
+    } else {
+      const diff = Math.round((cs.total-cs.sum)*100)/100;
+      const ok = Math.abs(diff)<0.011;
+      s.className = 'split-summary '+(ok?'good':'bad');
+      s.innerHTML = ok ? `<span>Adds up perfectly</span><span class="v num">${money(cs.total)}</span>`
+        : diff>0 ? `<span>${money(diff)} left to assign</span><span class="v num">${money(cs.sum)} / ${money(cs.total)}</span>`
+        : `<span>${money(-diff)} over the total</span><span class="v num">${money(cs.sum)} / ${money(cs.total)}</span>`;
+    }
+  }
+  function updateSave(){
+    const {ok} = currentSplit();
+    form.querySelector('#saveExpense').disabled = !ok || !form.querySelector('#exName').value.trim();
+  }
+
+  form.querySelector('#splitMode').addEventListener('click', e=>{
+    const btn = e.target.closest('button'); if(!btn) return;
+    fs.mode = btn.dataset.m;
+    [...form.querySelectorAll('#splitMode button')].forEach(b=>b.classList.toggle('active', b===btn));
+    drawDetail();
+  });
+  form.querySelector('#exTotal').addEventListener('input', ()=>{ drawDetail(); });
+  form.querySelector('#exName').addEventListener('input', updateSave);
+
+  // receipt
+  form.querySelector('#exFile').addEventListener('change', async (e)=>{
+    const file = e.target.files[0]; if(!file) return;
+    const prev = form.querySelector('#receiptPrev'); prev.innerHTML='<div class="receipt-prev">Processing…</div>';
+    try{
+      const r = await processFile(file);
+      draft.receipt = r;
+      prev.innerHTML = `<div class="receipt-prev">
+        ${r.preview?`<img src="${r.preview}">`:'<div class="act-ic">📄</div>'}
+        <div style="flex:1"><div style="font-weight:600">${esc(r.name)}</div><div style="color:var(--faint);font-size:12px">${(r.size/1024).toFixed(0)} KB</div></div>
+        <button class="btn btn-ghost btn-sm" id="rmReceipt">Remove</button></div>`;
+      prev.querySelector('#rmReceipt').onclick = ()=>{ draft.receipt=null; prev.innerHTML=''; form.querySelector('#exFile').value=''; };
+    }catch(err){ prev.innerHTML=''; toast('Could not read that file','err'); }
+  });
+
+  form.querySelector('#saveExpense').onclick = async ()=>{
+    const name = form.querySelector('#exName').value.trim();
+    const total = Number(form.querySelector('#exTotal').value)||0;
+    const desc = form.querySelector('#exDesc').value.trim();
+    const ts = tsFromISO(form.querySelector('#exDate').value);
+    const tag = form.querySelector('#exTag').value.trim();
+    const {split, ok} = currentSplit();
+    if(!ok || !name) return;
+    const payload = { name, total, description:desc, paidBy:fs.paidBy, split, type:(prefill&&prefill.type)||'expense', ts, tag };
+    if(draft.receipt) payload.receipt = { data:draft.receipt.data, name:draft.receipt.name, mimeType:draft.receipt.mimeType };
+    const btn = form.querySelector('#saveExpense'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+    try{
+      if(connected){ applyData(await api('addExpense', payload)); }
+      else { state.expenses.unshift({id:'local_'+Date.now(),receiptUrl:'',...payload}); state.expenses.sort((a,b)=>b.ts-a.ts); }
+      toast('Expense saved'); state.tab='balances'; renderAll();
+    }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save expense'; }
+  };
+
+  setTimeout(()=>{ drawPaidBy(); drawSplit(); drawDetail(); },0);
+  return wrap;
+}
+
+/* ============================================================== *
+ *  SMART ADD (scan a receipt)
+ * ============================================================== */
+const smart = { image:null, parsed:false, items:[], delivery:0, service:0, statedTotal:0, name:'', merchant:'', paidBy:null, date:null, tag:'' };
+function smartReset(){ Object.assign(smart,{image:null,parsed:false,items:[],delivery:0,service:0,statedTotal:0,name:'',merchant:'',paidBy:null,date:null,tag:''}); }
+function smartInvolved(){ const s=new Set(); smart.items.forEach(it=>it.assignedTo.forEach(p=>s.add(p))); return [...s]; }
+function smartAllAssigned(){ return smart.items.length>0 && smart.items.every(it=>it.assignedTo.size>0); }
+
+function viewSmart(){
+  const wrap=el('div');
+  wrap.appendChild(el('div','page-title','Smart add'));
+  wrap.appendChild(el('div','page-sub','Snap a receipt — I’ll read the items so you can split them line by line.'));
+
+  if(!smart.parsed){
+    const card=el('div','card'); card.style.padding='16px';
+    card.innerHTML=`
+      <label class="upload" for="scFile">
+        <div class="ic">🧾</div>
+        <div><div class="t">${smart.image?'File ready — generate below':'Add a receipt'}</div><div class="s">Photo, screenshot or PDF — a clear, flat one works best</div></div>
+      </label>
+      <input type="file" id="scFile" accept="image/*,application/pdf,.pdf" style="display:none">
+      <div id="scPrev"></div>
+      <button class="btn btn-primary btn-block" id="scGen" ${smart.image?'':'disabled'} style="margin-top:14px">✨ Generate e-receipt</button>`;
+    wrap.appendChild(card);
+    if(!aiKey()){ const n=el('div','note'); n.innerHTML=`<span class="ni">🔑</span><span>Add your Anthropic API key in Settings → AI receipt scanning to use this.</span>`; wrap.appendChild(n); }
+    const prev=card.querySelector('#scPrev');
+    if(smart.image){ const isPdf=(smart.image.mimeType||'').includes('pdf');
+      prev.innerHTML=`<div class="receipt-prev">${smart.image.preview?`<img src="${smart.image.preview}">`:'<div class="act-ic">📄</div>'}<div style="flex:1"><div style="font-weight:600">${isPdf?'PDF receipt':'Receipt image'}</div><div style="color:var(--faint);font-size:12px">${(smart.image.size/1024).toFixed(0)} KB</div></div></div>`; }
+    card.querySelector('#scFile').addEventListener('change', async e=>{
+      const f=e.target.files[0]; if(!f) return;
+      prev.innerHTML='<div class="receipt-prev">Processing…</div>';
+      try{ smart.image=await processFile(f); renderAll(); }catch(err){ toast('Could not read that image','err'); }
+    });
+    card.querySelector('#scGen').onclick=async ()=>{
+      if(!smart.image) return;
+      const btn=card.querySelector('#scGen'); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Reading receipt…';
+      try{
+        const p=await scanReceipt(smart.image);
+        smart.merchant=p.merchant||''; smart.name=p.merchant||'Receipt';
+        smart.items=(p.items||[]).map(it=>({name:String(it.name||'Item'), qty:Number(it.qty)||1, price:Number(it.price)||0, assignedTo:new Set()}));
+        smart.delivery=Number(p.delivery)||0; smart.service=Number(p.service)||0; smart.statedTotal=Number(p.total)||0;
+        smart.paidBy=state.me; smart.date=todayISO(); smart.tag=''; smart.parsed=true;
+        renderAll();
+      }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='✨ Generate e-receipt'; }
+    };
+    return wrap;
+  }
+
+  const ed=el('div'); wrap.appendChild(ed);
+  function renderEd(){
+    ed.innerHTML='';
+    const nameF=el('div','field'); nameF.innerHTML=`<label>Name</label><input class="input" id="scName" value="${esc(smart.name)}">`;
+    ed.appendChild(nameF); nameF.querySelector('#scName').onchange=e=>smart.name=e.target.value;
+
+    ed.appendChild(el('div','section-eyebrow','Items — assign each one'));
+    smart.items.forEach((it,idx)=>{
+      const card=el('div','card'); card.style.cssText='padding:12px 14px;margin-bottom:8px';
+      const unassigned = it.assignedTo.size===0;
+      card.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
+          <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:14.5px">${esc(it.name)}</div>${it.qty>1?`<div style="font-size:12px;color:var(--faint)">qty ${it.qty}</div>`:''}</div>
+          <div class="money-input" style="width:90px"><span class="sym" style="font-size:13px">£</span><input class="input scPrice" type="number" step="0.01" inputmode="decimal" value="${(Number(it.price)||0).toFixed(2)}" style="padding-left:22px;font-size:14px"></div>
+          <button class="stop-rm scDel" title="Remove">✕</button></div>
+        <div class="people-grid scWho"></div>
+        ${unassigned?'<div style="font-size:12px;color:var(--neg);margin-top:7px;font-weight:600">Assign this to someone →</div>':''}`;
+      ed.appendChild(card);
+      card.querySelector('.scPrice').onchange=e=>{ smart.items[idx].price=Number(e.target.value)||0; renderEd(); };
+      card.querySelector('.scDel').onclick=()=>{ smart.items.splice(idx,1); renderEd(); };
+      const g=card.querySelector('.scWho');
+      const all=el('button','pchip'+(it.assignedTo.size===state.people.length?' on':'')); all.innerHTML='Everyone<span class="tick">✓</span>';
+      all.onclick=()=>{ if(it.assignedTo.size===state.people.length) it.assignedTo.clear(); else state.people.forEach(p=>it.assignedTo.add(p.name)); renderEd(); };
+      g.appendChild(all);
+      state.people.forEach(p=>{ const b=el('button','pchip'+(it.assignedTo.has(p.name)?' on':''));
+        b.innerHTML=`${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+        b.onclick=()=>{ it.assignedTo.has(p.name)?it.assignedTo.delete(p.name):it.assignedTo.add(p.name); renderEd(); };
+        g.appendChild(b); });
+    });
+    const addI=el('button','btn btn-ghost btn-sm','+ Add a line'); addI.style.marginBottom='14px';
+    addI.onclick=()=>{ smart.items.push({name:'Item', qty:1, price:0, assignedTo:new Set()}); renderEd(); };
+    ed.appendChild(addI);
+
+    ed.appendChild(el('div','section-eyebrow','Charges — split across everyone with items'));
+    const ch=el('div','card'); ch.style.padding='4px 14px';
+    ch.innerHTML=`
+      <div class="split-row"><span class="name" style="flex:1">Delivery</span><div class="money-input" style="width:100px"><span class="sym" style="font-size:13px">£</span><input class="input" id="scDel" type="number" step="0.01" inputmode="decimal" value="${smart.delivery.toFixed(2)}" style="padding-left:22px;font-size:14px"></div></div>
+      <div class="split-row"><span class="name" style="flex:1">Service</span><div class="money-input" style="width:100px"><span class="sym" style="font-size:13px">£</span><input class="input" id="scSvc" type="number" step="0.01" inputmode="decimal" value="${smart.service.toFixed(2)}" style="padding-left:22px;font-size:14px"></div></div>`;
+    ed.appendChild(ch);
+    ch.querySelector('#scDel').onchange=e=>{ smart.delivery=Number(e.target.value)||0; renderEd(); };
+    ch.querySelector('#scSvc').onchange=e=>{ smart.service=Number(e.target.value)||0; renderEd(); };
+
+    const itemsSum=smart.items.reduce((s,it)=>s+(Number(it.price)||0),0);
+    const computed=itemsSum+smart.delivery+smart.service;
+    const diff=Math.round((smart.statedTotal-computed)*100)/100;
+    const mism = smart.statedTotal>0 && Math.abs(diff)>0.01;
+    const sum=el('div','split-summary '+(mism?'bad':'good'));
+    sum.innerHTML = mism
+      ? `<span>Scanned total ${money(smart.statedTotal)} ≠ items ${money(computed)} — check the numbers</span><span class="v num">${money(computed)}</span>`
+      : `<span>Total from items &amp; charges</span><span class="v num">${money(computed)}</span>`;
+    ed.appendChild(sum);
+
+    const pF=el('div','field'); pF.style.marginTop='16px'; pF.innerHTML='<label>Paid by</label><div class="people-grid" id="scPaid"></div>'; ed.appendChild(pF);
+    const drawPaid=()=>{ const g=pF.querySelector('#scPaid'); g.innerHTML=''; state.people.forEach(p=>{ const b=el('button','pchip'+(smart.paidBy===p.name?' on':'')); b.innerHTML=`${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`; b.onclick=()=>{smart.paidBy=p.name; drawPaid();}; g.appendChild(b); }); };
+    drawPaid();
+
+    const dF=el('div','field'); dF.innerHTML=`<label>Date</label><input class="input" id="scDate" type="date" value="${smart.date}" max="${todayISO()}">`; ed.appendChild(dF);
+    dF.querySelector('#scDate').onchange=e=>smart.date=e.target.value;
+    const tF=el('div','field'); tF.innerHTML=`<label>Tag <span class="hint">optional</span></label><input class="input" id="scTag" list="scTagList" autocomplete="off" value="${esc(smart.tag)}">${tagDatalist('scTagList')}`; ed.appendChild(tF);
+    tF.querySelector('#scTag').oninput=e=>smart.tag=e.target.value;
+
+    const involved=smartInvolved();
+    const nnote=el('div','note'); nnote.innerHTML=`<span class="ni">🧾</span><span>${involved.length} ${involved.length===1?'person':'people'} involved. A ${AI_CALL_PENCE}p scan charge each is added, owed to ${esc(API_PAYER)}.</span>`; ed.appendChild(nnote);
+
+    const sub=el('button','btn btn-primary btn-block', smartAllAssigned()?'Submit receipt':'Assign every item to submit'); sub.style.marginTop='4px';
+    sub.disabled = !smartAllAssigned() || !smart.paidBy;
+    sub.onclick=()=>submitReceipt(sub);
+    ed.appendChild(sub);
+    const over=el('button','btn btn-ghost btn-block','Start over'); over.style.marginTop='10px';
+    over.onclick=()=>{ smartReset(); renderAll(); };
+    ed.appendChild(over);
+  }
+  renderEd();
+  return wrap;
+}
+
+async function submitReceipt(btn){
+  const involved=smartInvolved();
+  if(!involved.length) return toast('Assign the items first','err');
+  const {split,total}=computeReceiptShares(smart.items, smart.delivery, smart.service, involved);
+  if(!(total>0)) return toast('Nothing to submit','err');
+  const desc = smart.items.map(it=>`${it.name} £${(Number(it.price)||0).toFixed(2)}`).join('; ')
+    + (smart.delivery?`; Delivery £${smart.delivery.toFixed(2)}`:'') + (smart.service?`; Service £${smart.service.toFixed(2)}`:'');
+  const main={ name:smart.name||'Receipt', total, description:desc, paidBy:smart.paidBy, split, type:'expense', tag:(smart.tag||'').trim(), ts:tsFromISO(smart.date) };
+  if(smart.image){ const isPdf=(smart.image.mimeType||'').includes('pdf'); main.receipt={ data:smart.image.data, name:isPdf?'receipt.pdf':'receipt.jpg', mimeType:smart.image.mimeType||'image/jpeg' }; }
+  const feeEach=AI_CALL_PENCE/100; const feeSplit={}; involved.forEach(p=>feeSplit[p]=feeEach);
+  const payer = state.people.some(p=>p.name===API_PAYER)?API_PAYER:smart.paidBy;
+  const fee={ name:'AI receipt scan', total:Math.round(feeEach*involved.length*100)/100, description:`${AI_CALL_PENCE}p per person for the scan`, paidBy:payer, split:feeSplit, type:'expense', ts:tsFromISO(smart.date) };
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span> Saving…'; }
+  try{
+    await api('addExpense', main);
+    if(fee.total>0) await api('addExpense', fee);
+    smartReset(); await refresh(); toast('Receipt added'); state.tab='balances'; renderAll();
+  }catch(e){ toast(e.message,'err'); if(btn){ btn.disabled=false; btn.textContent='Submit receipt'; } }
+}
+
+/* ============================================================== *
+ *  QUICK EXPENSES
+ * ============================================================== */
+function viewQuick(){
+  const wrap = el('div');
+  wrap.appendChild(el('div','page-title','Quick add'));
+  wrap.appendChild(el('div','page-sub','One tap to log the things that happen again and again.'));
+
+  wrap.appendChild(el('div','section-eyebrow','Quick expenses'));
+  const grid = el('div','quick-grid');
+  state.quick.forEach(q=>{
+    const b = el('button','quick-btn');
+    const splitTxt = q.split==='all'||!Array.isArray(q.split) ? 'Split with everyone' : `Split with ${q.split.length}`;
+    b.innerHTML = `<button class="del" title="Delete">✕</button>
+      <span class="emo">${esc(q.emoji||'⚡')}</span>
+      <div class="ql">${esc(q.label)}</div>
+      <div class="qa num">${money(q.amount)}</div>
+      <div class="qs">${splitTxt}</div>`;
+    b.onclick = ()=>logQuick(q);
+    b.querySelector('.del').onclick = (e)=>{ e.stopPropagation(); deleteQuick(q); };
+    grid.appendChild(b);
+  });
+  const add = el('button','quick-btn quick-add','+ New quick expense');
+  add.onclick = ()=>quickEditorSheet();
+  grid.appendChild(add);
+  wrap.appendChild(grid);
+
+  const eb = el('div','section-eyebrow','Quick trips'); eb.style.marginTop='24px';
+  wrap.appendChild(eb);
+  const tgrid = el('div','quick-grid');
+  state.quickTrips.forEach(q=>{
+    const b = el('button','quick-btn');
+    const splitTxt = q.split==='all'||!Array.isArray(q.split) ? 'Split with everyone' : `Split with ${q.split.length}`;
+    b.innerHTML = `<button class="del" title="Delete">✕</button>
+      <span class="emo">${esc(q.emoji||'🚗')}</span>
+      <div class="ql">${esc(q.label)}</div>
+      <div class="qs" style="margin-top:4px">${esc(q.origin)} → ${esc(q.destination)}</div>
+      <div class="qs">${q.mpg} mpg${q.roundTrip?' · return':''} · ${splitTxt}</div>`;
+    b.onclick = ()=>logQuickTrip(q);
+    b.querySelector('.del').onclick = (e)=>{ e.stopPropagation(); deleteQuickTrip(q); };
+    tgrid.appendChild(b);
+  });
+  const addT = el('button','quick-btn quick-add','+ New quick trip');
+  addT.onclick = ()=>quickTripEditorSheet();
+  tgrid.appendChild(addT);
+  wrap.appendChild(tgrid);
+
+  return wrap;
+}
+async function deleteQuickTrip(q){
+  if(connected){ try{ applyData(await api('deleteQuickTrip',{label:q.label})); toast('Removed'); }catch(e){ toast(e.message,'err'); } }
+  else { state.quickTrips = state.quickTrips.filter(x=>x!==q); }
+  renderAll();
+}
+async function logQuickTrip(q){
+  if(!connected) return toast('Connect to Supabase to calculate trips.','err');
+  toast('Mapping route…');
+  let r;
+  try{ r = await api('calcTrip',{origin:placeResolve(q.origin), destination:placeResolve(q.destination), mpg:q.mpg, roundTrip:q.roundTrip}); }
+  catch(e){ return toast(e.message,'err'); }
+  const names = (q.split==='all'||!Array.isArray(q.split)) ? state.people.map(p=>p.name) : q.split.filter(n=>state.people.some(p=>p.name===n));
+  const fs = { paidBy: state.me, tag:'' };
+  openSheet(s=>{
+    s.appendChild(el('h2',null,`${q.emoji||'🚗'} ${esc(q.label)}`));
+    s.appendChild(el('p','desc',`${esc(q.origin)} → ${esc(q.destination)}`));
+    const res = el('div','trip-result'); res.style.marginTop='0';
+    res.innerHTML = `<div class="cell"><div class="cv num">${r.miles}</div><div class="cl">miles${r.roundTrip?' (return)':''}</div></div>
+      <div class="cell"><div class="cv num">${r.litres}</div><div class="cl">litres</div></div>
+      <div class="cell cost"><div class="cv num">${money(r.cost)}</div><div class="cl">fuel cost</div></div>`;
+    s.appendChild(res);
+    const f = el('div','field'); f.style.marginTop='16px'; f.innerHTML='<label>Paid by</label><div class="people-grid" id="qtPaid"></div>';
+    s.appendChild(f);
+    const draw=()=>{ const g=f.querySelector('#qtPaid'); g.innerHTML='';
+      state.people.forEach(p=>{ const b=el('button','pchip'+(fs.paidBy===p.name?' on':''));
+        b.innerHTML=`${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+        b.onclick=()=>{fs.paidBy=p.name; draw();}; g.appendChild(b); }); };
+    draw();
+    const tgF = el('div','field'); tgF.innerHTML=`<label>Tag <span class="hint">optional</span></label><input class="input" id="qtTag" list="qtTagList" placeholder="e.g. Lake District weekend" autocomplete="off">${tagDatalist('qtTagList')}`;
+    s.appendChild(tgF);
+    tgF.querySelector('#qtTag').oninput = e=>{ fs.tag=e.target.value; };
+    const dF = el('div','field'); dF.innerHTML=`<label>Date</label><input class="input" id="qtDate" type="date" value="${todayISO()}" max="${todayISO()}">`;
+    s.appendChild(dF);
+    const info = el('div','split-summary good');
+    info.innerHTML = `<span>Split equally · ${names.length} people</span><span class="v num">${money(r.cost)}</span>`;
+    s.appendChild(info);
+    s.appendChild(aaNote());
+    const btn = el('button','btn btn-primary btn-block','Log '+money(r.cost)); btn.style.marginTop='14px';
+    btn.onclick = async ()=>{
+      const cents=Math.round(r.cost*100), n=names.length||1, base=Math.floor(cents/n); let rem=cents-base*n;
+      const split={}; names.forEach((nm,i)=>split[nm]=(base+(i<rem?1:0))/100);
+      const payload={ name:`Trip: ${q.origin} → ${q.destination}`, total:r.cost, paidBy:fs.paidBy, split, type:'trip', tag:(fs.tag||'').trim(),
+        description:`${r.miles} miles${r.roundTrip?' return':''} · ${r.litres} L · ${q.mpg} mpg @ ${fuelGBP()}/L`,
+        ts: tsFromISO(s.querySelector('#qtDate').value) };
+      btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+      try{ applyData(await api('addExpense',payload)); closeSheet(); toast('Trip logged'); state.tab='balances'; renderAll(); }
+      catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Log '+money(r.cost); }
+    };
+    s.appendChild(btn);
+  });
+}
+function quickTripEditorSheet(){
+  openSheet(s=>{
+    s.appendChild(el('h2',null,'New quick trip'));
+    s.appendChild(el('p','desc','A journey you make often — saved so you can log it in one tap.'));
+    s.innerHTML += `
+      <div style="display:flex;gap:12px">
+        <div class="field" style="flex:none;width:80px"><label>Emoji</label><input class="input" id="qtEmoji" maxlength="2" placeholder="🚗" style="text-align:center;font-size:22px"></div>
+        <div class="field" style="flex:1"><label>Label</label><input class="input" id="qtLabel" placeholder="e.g. Footy training"></div>
+      </div>
+      <div class="field"><label>Start</label><input class="input" id="qtFrom" list="qtPlaceList" autocomplete="off" placeholder="Type or pick a saved place"></div>
+      <div class="field"><label>Destination</label><input class="input" id="qtTo" list="qtPlaceList" autocomplete="off" placeholder="Type or pick a saved place"></div>
+      ${placeDatalist('qtPlaceList')}
+      <div class="field"><label>Vehicle</label><select class="input" id="qtVeh"></select></div>
+      <div class="field"><label>MPG</label><input class="input" id="qtMpg" type="number" inputmode="decimal" placeholder="e.g. 45"></div>
+      <div class="field"><label style="display:flex;align-items:center;gap:9px;cursor:pointer">
+        <input type="checkbox" id="qtRound" style="width:18px;height:18px;accent-color:var(--brand)"> Return journey</label></div>
+      <div class="field"><label>Split between</label><div class="people-grid" id="qtSplit"></div></div>`;
+    const veh = s.querySelector('#qtVeh');
+    veh.innerHTML = `<option value="">— Manual MPG —</option>` + state.vehicles.map(v=>`<option value="${esc(v.name)}">${esc(v.name)} · ${v.mpg} mpg</option>`).join('');
+    veh.onchange = ()=>{ const v=state.vehicles.find(x=>x.name===veh.value); if(v) s.querySelector('#qtMpg').value=v.mpg; };
+    const sel = new Set(state.people.map(p=>p.name));
+    const drawS=()=>{ const g=s.querySelector('#qtSplit'); g.innerHTML='';
+      const all=el('button','pchip'+(sel.size===state.people.length?' on':'')); all.innerHTML='Everyone<span class="tick">✓</span>';
+      all.onclick=()=>{ if(sel.size===state.people.length)sel.clear(); else state.people.forEach(p=>sel.add(p.name)); drawS(); };
+      g.appendChild(all);
+      state.people.forEach(p=>{ const b=el('button','pchip'+(sel.has(p.name)?' on':''));
+        b.innerHTML=`${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+        b.onclick=()=>{ sel.has(p.name)?sel.delete(p.name):sel.add(p.name); drawS(); }; g.appendChild(b); }); };
+    drawS();
+    const btn = el('button','btn btn-primary btn-block','Create quick trip');
+    btn.onclick = async ()=>{
+      const label=s.querySelector('#qtLabel').value.trim();
+      const origin=s.querySelector('#qtFrom').value.trim();
+      const destination=s.querySelector('#qtTo').value.trim();
+      const mpg=Number(s.querySelector('#qtMpg').value)||0;
+      if(!label) return toast('Give it a label','err');
+      if(!origin||!destination) return toast('Enter both places','err');
+      if(!(mpg>0)) return toast('Enter the MPG','err');
+      const split = sel.size===state.people.length ? 'all' : [...sel];
+      const q = { label, emoji:s.querySelector('#qtEmoji').value.trim()||'🚗', origin, destination,
+        vehicle:s.querySelector('#qtVeh').value||'', mpg, roundTrip:s.querySelector('#qtRound').checked, split };
+      btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+      try{
+        if(connected){ applyData(await api('addQuickTrip',q)); }
+        else { state.quickTrips.push(q); }
+        closeSheet(); toast('Quick trip created'); renderAll();
+      }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Create quick trip'; }
+    };
+    s.appendChild(btn);
+  });
+}
+function aaNote(){
+  const n = el('div','note');
+  n.innerHTML = `<span class="ni">⛽</span><span>The cost of unleaded is set to the AA UK average (currently ${fuelGBP()}/litre) and is reviewed every 4 weeks. Change it under Settings.</span>`;
+  return n;
+}
+function logQuick(q){
+  openSheet(s=>{
+    s.appendChild(el('h2',null,`${q.emoji||'⚡'} ${esc(q.label)}`));
+    s.appendChild(el('p','desc','Log this now? You can change who paid first.'));
+    const names = (q.split==='all'||!Array.isArray(q.split)) ? state.people.map(p=>p.name) : q.split.filter(n=>state.people.some(p=>p.name===n));
+    const fs = { paidBy: state.me };
+    const f = el('div','field'); f.innerHTML='<label>Paid by</label><div class="people-grid" id="qPaid"></div>';
+    s.appendChild(f);
+    const draw = ()=>{ const g=f.querySelector('#qPaid'); g.innerHTML='';
+      state.people.forEach(p=>{ const b=el('button','pchip'+(fs.paidBy===p.name?' on':''));
+        b.innerHTML=`${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+        b.onclick=()=>{fs.paidBy=p.name; draw();}; g.appendChild(b); }); };
+    draw();
+    const dF = el('div','field'); dF.innerHTML = `<label>Date</label><input class="input" id="qDate" type="date" value="${todayISO()}" max="${todayISO()}">`;
+    s.appendChild(dF);
+    const info = el('div','split-summary good');
+    info.innerHTML = `<span>Split equally · ${names.length} people</span><span class="v num">${money(q.amount)}</span>`;
+    s.appendChild(info);
+    const btn = el('button','btn btn-primary btn-block','Log '+money(q.amount)); btn.style.marginTop='14px';
+    btn.onclick = async ()=>{
+      const cents=Math.round(q.amount*100), n=names.length||1, base=Math.floor(cents/n); let rem=cents-base*n;
+      const split={}; names.forEach((nm,i)=>split[nm]=(base+(i<rem?1:0))/100);
+      const payload={ name:q.label, total:q.amount, description:q.description||'', paidBy:fs.paidBy, split, type:'quick', ts: tsFromISO(s.querySelector('#qDate').value) };
+      btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+      try{
+        if(connected){ applyData(await api('addExpense',payload)); }
+        else { state.expenses.unshift({id:'local_'+Date.now(),receiptUrl:'',...payload}); state.expenses.sort((a,b)=>b.ts-a.ts); }
+        closeSheet(); toast(q.label+' logged'); state.tab='balances'; renderAll();
+      }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Log '+money(q.amount); }
+    };
+    s.appendChild(btn);
+  });
+}
+async function deleteQuick(q){
+  if(connected){ try{ applyData(await api('deleteQuickExpense',{label:q.label})); toast('Removed'); }catch(e){ toast(e.message,'err'); } }
+  else { state.quick = state.quick.filter(x=>x!==q); }
+  renderAll();
+}
+function quickEditorSheet(){
+  openSheet(s=>{
+    s.appendChild(el('h2',null,'New quick expense'));
+    s.appendChild(el('p','desc','A reusable button — like a coffee round or a weekly subscription.'));
+    s.innerHTML += `
+      <div class="field"><label>Emoji</label><input class="input" id="qEmoji" maxlength="2" placeholder="☕" style="width:80px;text-align:center;font-size:22px"></div>
+      <div class="field"><label>Label</label><input class="input" id="qLabel" placeholder="e.g. Coffee round"></div>
+      <div class="field"><label>Amount</label><div class="money-input"><span class="sym">£</span>
+        <input class="input" id="qAmount" type="number" step="0.01" inputmode="decimal" placeholder="0.00"></div></div>
+      <div class="field"><label>Description <span class="hint">optional</span></label><input class="input" id="qDescQ" placeholder="Optional note"></div>
+      <div class="field"><label>Split between</label><div class="people-grid" id="qSplit"></div></div>`;
+    const sel = new Set(state.people.map(p=>p.name));
+    const drawS = ()=>{ const g=s.querySelector('#qSplit'); g.innerHTML='';
+      const all=el('button','pchip'+(sel.size===state.people.length?' on':'')); all.innerHTML='Everyone<span class="tick">✓</span>';
+      all.onclick=()=>{ if(sel.size===state.people.length)sel.clear(); else state.people.forEach(p=>sel.add(p.name)); drawS(); };
+      g.appendChild(all);
+      state.people.forEach(p=>{ const b=el('button','pchip'+(sel.has(p.name)?' on':''));
+        b.innerHTML=`${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+        b.onclick=()=>{ sel.has(p.name)?sel.delete(p.name):sel.add(p.name); drawS(); }; g.appendChild(b); }); };
+    drawS();
+    const btn = el('button','btn btn-primary btn-block','Create button');
+    btn.onclick = async ()=>{
+      const label = s.querySelector('#qLabel').value.trim();
+      const amount = Number(s.querySelector('#qAmount').value)||0;
+      if(!label) return toast('Give it a label','err');
+      if(!(amount>0)) return toast('Enter an amount','err');
+      const split = sel.size===state.people.length ? 'all' : [...sel];
+      const q = { label, emoji:s.querySelector('#qEmoji').value.trim()||'⚡', amount, description:s.querySelector('#qDescQ').value.trim(), split };
+      btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+      try{
+        if(connected){ applyData(await api('addQuickExpense',q)); }
+        else { state.quick.push(q); }
+        closeSheet(); toast('Quick expense created'); renderAll();
+      }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Create button'; }
+    };
+    s.appendChild(btn);
+  });
+}
+
+/* ============================================================== *
+ *  TRIP / FUEL
+ * ============================================================== */
+let _map, _layer;
+const trip = { stops:['',''], vehicle:null, mpg:'', result:null };
+function viewTrip(){
+  const wrap = el('div');
+  wrap.appendChild(el('div','page-title','Trip cost'));
+  wrap.appendChild(el('div','page-sub','Add your stops, work out the fuel, then split it by who was actually in the car.'));
+
+  const form = el('div','card'); form.style.padding='16px';
+  form.innerHTML = `
+    <div id="stopsWrap"></div>
+    <button class="btn btn-ghost btn-sm" id="addStop" style="margin-top:2px">+ Add stop</button>
+    <div class="field" style="margin-top:16px"><label>Vehicle</label>
+      <select class="input" id="tVehicle"></select></div>
+    <div class="field"><label>MPG</label><input class="input" id="tMpg" type="number" inputmode="decimal" placeholder="e.g. 45" value="${esc(trip.mpg)}"></div>
+    <button class="btn btn-primary btn-block" id="tCalc">Calculate fuel cost</button>
+    <div id="tOut"></div>
+    ${placeDatalist('placeList')}
+  `;
+  wrap.appendChild(form);
+  form.appendChild(aaNote());
+
+  function syncStops(){ [...form.querySelectorAll('.stop-input')].forEach((inp,i)=>{ trip.stops[i]=inp.value; }); }
+  function renderStops(){
+    const c = form.querySelector('#stopsWrap'); c.innerHTML='';
+    trip.stops.forEach((val,i)=>{
+      const last = i===trip.stops.length-1;
+      const ph = i===0 ? 'Start — type or pick a saved place' : last ? 'Destination' : 'Stop '+i;
+      const row = el('div'); row.style.cssText='display:flex;gap:10px;align-items:center;margin-bottom:8px';
+      row.innerHTML = `<span class="stop-dot ${i===0?'start':last?'end':'mid'}"></span>
+        <input class="input stop-input" list="placeList" placeholder="${ph}" value="${esc(val)}" autocomplete="off" style="flex:1">
+        ${trip.stops.length>2?`<button class="stop-rm" data-i="${i}" aria-label="Remove stop">✕</button>`:''}`;
+      c.appendChild(row);
+    });
+    c.querySelectorAll('.stop-input').forEach((inp,i)=>{ inp.oninput=()=>{ trip.stops[i]=inp.value; }; });
+    c.querySelectorAll('.stop-rm').forEach(b=>{ b.onclick=()=>{ syncStops(); trip.stops.splice(Number(b.dataset.i),1); renderStops(); }; });
+  }
+  renderStops();
+  form.querySelector('#addStop').onclick = ()=>{ syncStops(); trip.stops.push(''); renderStops(); };
+
+  const sel = form.querySelector('#tVehicle');
+  sel.innerHTML = `<option value="">— Manual entry —</option>` + state.vehicles.map(v=>`<option value="${esc(v.name)}">${esc(v.name)} · ${v.mpg} mpg</option>`).join('') + `<option value="__add">+ Save a vehicle…</option>`;
+  sel.onchange = ()=>{
+    if(sel.value==='__add'){ sel.value=trip.vehicle||''; vehicleEditorSheet(); return; }
+    trip.vehicle = sel.value;
+    const v = state.vehicles.find(x=>x.name===sel.value);
+    if(v){ form.querySelector('#tMpg').value=v.mpg||''; }
+  };
+  if(trip.vehicle) sel.value=trip.vehicle;
+
+  form.querySelector('#tCalc').onclick = async ()=>{
+    syncStops();
+    trip.mpg = form.querySelector('#tMpg').value;
+    const labels = trip.stops.map(s=>s.trim()).filter(Boolean);
+    if(labels.length<2) return toast('Add at least a start and a destination','err');
+    if(!(Number(trip.mpg)>0)) return toast('Enter the MPG','err');
+    if(!connected) return toast('Connect to Supabase, then it maps the route and distance.','err');
+    const btn = form.querySelector('#tCalc'); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Mapping route…';
+    try{
+      const r = await api('calcTrip',{stops: labels.map(placeResolve), mpg:Number(trip.mpg)});
+      trip.display = labels; trip.result = r; renderTripOut(form.querySelector('#tOut'));
+    }catch(e){ toast(e.message,'err'); }
+    finally{ btn.disabled=false; btn.innerHTML='Calculate fuel cost'; }
+  };
+
+  if(state.vehicles.length){
+    wrap.appendChild(el('div','section-eyebrow','Saved vehicles'));
+    const vc = el('div','card'); vc.style.padding='4px 16px';
+    state.vehicles.forEach(v=>{
+      const r = el('div','veh-row');
+      r.innerHTML = `<div class="act-ic">🚗</div><div style="flex:1"><div class="vn">${esc(v.name)}</div>
+        <div class="vm">${v.mpg} mpg</div></div>
+        <button class="btn btn-ghost btn-sm vdel">Remove</button>`;
+      r.querySelector('.vdel').onclick = async ()=>{
+        if(connected){ try{ applyData(await api('deleteVehicle',{name:v.name})); toast('Removed'); }catch(e){ toast(e.message,'err'); } }
+        else { state.vehicles=state.vehicles.filter(x=>x!==v); }
+        renderAll();
+      };
+      vc.appendChild(r);
+    });
+    wrap.appendChild(vc);
+  }
+
+  if(trip.result) setTimeout(()=>renderTripOut(form.querySelector('#tOut')),0);
+  return wrap;
+}
+
+// Work out each person's share: each leg's cost is split only among
+// the people in the car for it (driver drives the whole way).
+function computeTripShares(r, sp){
+  const parts = [...sp.parts];
+  const legCount = r.legs.length;
+  const raw = {}; parts.forEach(p=>raw[p]=0);
+  let ok = true;
+  for(let i=0;i<legCount;i++){
+    const present = parts.filter(p=> (sp.exit[p]||legCount) >= i+1);
+    if(!present.length){ ok=false; continue; }
+    const c = r.legs[i].costExact!=null ? r.legs[i].costExact : r.legs[i].cost;
+    present.forEach(p=> raw[p]+= c/present.length);
+  }
+  const target = Math.round(r.cost*100);
+  const cents = {}; let sum=0;
+  parts.forEach(p=>{ cents[p]=Math.floor(raw[p]*100); sum+=cents[p]; });
+  const sorted = parts.slice().sort((a,b)=> (raw[b]*100-Math.floor(raw[b]*100)) - (raw[a]*100-Math.floor(raw[a]*100)));
+  let rem = target - sum, k=0;
+  while(rem>0 && sorted.length){ cents[sorted[k%sorted.length]]+=1; rem--; k++; }
+  while(rem<0 && sorted.length){ const p=sorted[sorted.length-1-(k%sorted.length)]; if(cents[p]>0){cents[p]-=1; rem++;} k++; }
+  const shares={}; parts.forEach(p=> shares[p]=cents[p]/100);
+  return {shares, ok, total:r.cost};
+}
+
+function renderTripOut(box){
+  const r = trip.result; if(!r) return;
+  const sp = {
+    driver: state.people.some(p=>p.name===state.me)?state.me:(state.people[0]||{}).name,
+    parts: new Set(state.people.map(p=>p.name)),
+    exit: {}, date: todayISO(), tag: ''
+  };
+  const labels = (trip.display && trip.display.length===r.stops.length) ? trip.display : r.stops;
+  state.people.forEach(p=> sp.exit[p.name]=r.legs.length);
+
+  box.innerHTML = `
+    <div class="trip-result" style="margin-top:16px">
+      <div class="cell"><div class="cv num">${r.miles}</div><div class="cl">miles</div></div>
+      <div class="cell"><div class="cv num">${r.litres}</div><div class="cl">litres</div></div>
+      <div class="cell cost"><div class="cv num">${money(r.cost)}</div><div class="cl">fuel cost</div></div>
+    </div>
+    <div id="map"></div>
+    <div class="section-eyebrow" style="margin-top:18px">Route</div>
+    <div class="card" id="legBox" style="padding:4px 14px;margin-bottom:4px"></div>
+    <div class="section-eyebrow" style="margin-top:18px">Who pays what</div>
+    <div id="splitPanel"></div>`;
+
+  const lb = box.querySelector('#legBox');
+  r.legs.forEach((l,idx)=>{
+    const row = el('div','split-row');
+    row.innerHTML = `<span class="name" style="flex:1;font-size:13.5px">${esc(labels[idx])} → ${esc(labels[idx+1])}</span>
+      <span class="num" style="color:var(--faint);font-size:12.5px;margin-right:12px">${l.miles} mi</span>
+      <span class="num" style="font-weight:600">${money(l.cost)}</span>`;
+    lb.appendChild(row);
+  });
+
+  const panel = box.querySelector('#splitPanel');
+  function renderPanel(){
+    panel.innerHTML='';
+    const dF = el('div','field'); dF.innerHTML='<label>Who drove &amp; paid for fuel?</label><div class="people-grid" id="trDriver"></div>';
+    panel.appendChild(dF);
+    drawChips(dF.querySelector('#trDriver'), p=>sp.driver===p, p=>{ sp.driver=p; sp.parts.add(p); sp.exit[p]=r.legs.length; renderPanel(); });
+
+    const pF = el('div','field'); pF.innerHTML='<label>Who was in the car?</label><div class="people-grid" id="trParts"></div>';
+    panel.appendChild(pF);
+    drawChips(pF.querySelector('#trParts'), p=>sp.parts.has(p), p=>{ if(p===sp.driver) return; sp.parts.has(p)?sp.parts.delete(p):sp.parts.add(p); renderPanel(); });
+
+    if(r.legs.length>1){
+      const eF = el('div','field'); eF.innerHTML='<label>Where did each person get out? <span class="hint">leave on the destination if they stayed in the whole way</span></label><div id="trExits"></div>';
+      panel.appendChild(eF);
+      const c = eF.querySelector('#trExits');
+      [...sp.parts].forEach(nm=>{
+        const isDriver = nm===sp.driver;
+        const row = el('div','split-row');
+        row.innerHTML = `${avatar(nm,'sm')}<span class="name">${esc(nm)}</span>`;
+        const selx = el('select','input'); selx.style.cssText='width:auto;max-width:56%;padding:8px 10px;font-size:13px';
+        let opts=''; for(let i=1;i<r.stops.length;i++){ opts+=`<option value="${i}" ${(isDriver?r.stops.length-1:sp.exit[nm])===i?'selected':''}>${esc(labels[i])}</option>`; }
+        selx.innerHTML=opts; selx.disabled=isDriver;
+        selx.onchange=()=>{ sp.exit[nm]=Number(selx.value); renderPanel(); };
+        row.appendChild(selx);
+        c.appendChild(row);
+      });
+    }
+
+    const sh = computeTripShares(r, sp);
+    const card = el('div','card'); card.style.cssText='padding:4px 14px;margin-top:4px';
+    [...sp.parts].forEach(nm=>{
+      const isDriver = nm===sp.driver;
+      const row = el('div','split-row');
+      const out = sp.exit[nm] < r.stops.length-1 ? ` <span style="color:var(--faint);font-weight:400">· out at ${esc(labels[sp.exit[nm]])}</span>` : '';
+      row.innerHTML = `${avatar(nm,'sm')}<span class="name">${esc(nm)}${isDriver?' <span style="color:var(--faint);font-weight:400">· paid</span>':out}</span><span class="num" style="font-weight:600">${money(sh.shares[nm]||0)}</span>`;
+      card.appendChild(row);
+    });
+    panel.appendChild(card);
+
+    const tg = el('div','field'); tg.style.marginTop='12px';
+    tg.innerHTML = `<label>Tag <span class="hint">optional</span></label><input class="input" id="trTag" list="trTagList" placeholder="e.g. Lake District weekend" autocomplete="off" value="${esc(sp.tag)}">${tagDatalist('trTagList')}`;
+    panel.appendChild(tg);
+    tg.querySelector('#trTag').oninput = e=>{ sp.tag=e.target.value; };
+
+    const dt = el('div','field'); dt.style.marginTop='12px';
+    dt.innerHTML = `<label>Date</label><input class="input" id="trDate" type="date" value="${sp.date}" max="${todayISO()}">`;
+    panel.appendChild(dt);
+    dt.querySelector('#trDate').onchange = e=>{ sp.date=e.target.value; };
+
+    const btn = el('button','btn btn-primary btn-block','Log trip · '+money(r.cost));
+    btn.onclick = ()=>logTrip(r, sp, btn);
+    panel.appendChild(btn);
+  }
+  function drawChips(g, isOn, onClick){
+    g.innerHTML='';
+    state.people.forEach(p=>{
+      const b = el('button','pchip'+(isOn(p.name)?' on':''));
+      b.innerHTML = `${avatar(p.name,'sm')}${esc(p.name)}<span class="tick">✓</span>`;
+      b.onclick = ()=>onClick(p.name);
+      g.appendChild(b);
+    });
+  }
+  renderPanel();
+  setTimeout(()=>drawMap(r),50);
+}
+
+async function logTrip(r, sp, btn){
+  const sh = computeTripShares(r, sp);
+  if(!sh.ok) return toast('Every leg needs at least one person in the car','err');
+  const split={}; Object.keys(sh.shares).forEach(p=>{ if(sh.shares[p]>0) split[p]=sh.shares[p]; });
+  if(!Object.keys(split).length) return toast('Nobody is set to pay for this trip','err');
+  const labels = (trip.display && trip.display.length===r.stops.length) ? trip.display : r.stops;
+  const exits = [...sp.parts].filter(p=>p!==sp.driver && sp.exit[p] < r.stops.length-1)
+    .map(p=>`${p} out at ${labels[sp.exit[p]]}`).join(', ');
+  const payload = {
+    name:`Trip: ${labels[0]} → ${labels[labels.length-1]}`,
+    total:r.cost, paidBy:sp.driver, split, type:'trip', tag:(sp.tag||'').trim(),
+    description:`${labels.join(' → ')} · ${r.miles} mi · ${r.litres} L · ${trip.mpg} mpg @ ${fuelGBP()}/L${exits?(' · '+exits):''}`,
+    ts: tsFromISO(sp.date)
+  };
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+  try{
+    if(connected){ applyData(await api('addExpense',payload)); }
+    else { state.expenses.unshift({id:'local_'+Date.now(),receiptUrl:'',...payload}); state.expenses.sort((a,b)=>b.ts-a.ts); }
+    trip.result=null; toast('Trip logged'); state.tab='balances'; renderAll();
+  }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Log trip · '+money(r.cost); }
+}
+
+function drawMap(r){
+  const node = document.getElementById('map'); if(!node||typeof L==='undefined') return;
+  if(_map){ _map.remove(); _map=null; }
+  _map = L.map(node,{zoomControl:false, attributionControl:false});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(_map);
+  const pts = (r.geo && r.geo.length) ? r.geo : (r.polyline ? decodePolyline(r.polyline) : (r.points||[]));
+  let line;
+  if(pts.length){ line = L.polyline(pts,{color:'#0E7C66',weight:4,opacity:.9}).addTo(_map); }
+  (r.points||[]).forEach((pt,i)=>{
+    const last = i===r.points.length-1;
+    L.circleMarker(pt,{radius:7,color:last?'#E5564B':'#0E7C66',fillColor:last?'#E5564B':'#0E7C66',fillOpacity:1,weight:2}).addTo(_map);
+  });
+  if(line) _map.fitBounds(line.getBounds().pad(0.15));
+  else if(r.points&&r.points.length) _map.fitBounds(L.latLngBounds(r.points).pad(0.2));
+  setTimeout(()=>_map.invalidateSize(),100);
+}
+function decodePolyline(str){
+  let index=0,lat=0,lng=0,coords=[];
+  while(index<str.length){
+    let b,shift=0,result=0;
+    do{ b=str.charCodeAt(index++)-63; result|=(b&0x1f)<<shift; shift+=5; }while(b>=0x20);
+    lat += (result&1)?~(result>>1):(result>>1); shift=0; result=0;
+    do{ b=str.charCodeAt(index++)-63; result|=(b&0x1f)<<shift; shift+=5; }while(b>=0x20);
+    lng += (result&1)?~(result>>1):(result>>1);
+    coords.push([lat/1e5,lng/1e5]);
+  }
+  return coords;
+}
+function vehicleEditorSheet(){
+  openSheet(s=>{
+    s.appendChild(el('h2',null,'Save a vehicle'));
+    s.appendChild(el('p','desc','Stored so you don’t re-enter the MPG every trip.'));
+    s.innerHTML += `
+      <div class="field"><label>Name</label><input class="input" id="vName" placeholder="e.g. Owen’s Golf"></div>
+      <div class="field"><label>MPG <span class="hint">average miles per gallon</span></label><input class="input" id="vMpg" type="number" inputmode="decimal" placeholder="45"></div>`;
+    const btn = el('button','btn btn-primary btn-block','Save vehicle');
+    btn.onclick = async ()=>{
+      const name=s.querySelector('#vName').value.trim();
+      const mpg=Number(s.querySelector('#vMpg').value)||0;
+      if(!name) return toast('Give it a name','err');
+      if(!(mpg>0)) return toast('Enter the MPG','err');
+      btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+      try{
+        if(connected){ applyData(await api('addVehicle',{name,mpg})); }
+        else { state.vehicles.push({name,mpg,notes:''}); }
+        trip.vehicle=name; closeSheet(); toast('Vehicle saved'); renderAll();
+      }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save vehicle'; }
+    };
+    s.appendChild(btn);
+  });
+}
+
+/* ============================================================== *
+ *  SETTINGS
+ * ============================================================== */
+function viewSettings(){
+  const wrap = el('div');
+  wrap.appendChild(el('div','page-title','Settings'));
+  wrap.appendChild(el('div','page-sub','Shared settings that apply for everyone in the group.'));
+
+  wrap.appendChild(el('div','section-eyebrow','Fuel price'));
+  const card = el('div','card'); card.style.padding='16px';
+  card.innerHTML = `
+    <div class="field" style="margin-bottom:10px"><label>Unleaded — pence per litre</label>
+      <div class="money-input"><span class="sym" style="font-family:var(--display)">p</span>
+        <input class="input num" id="setFuel" type="number" inputmode="decimal" step="0.1" value="${fuelPence()}" style="padding-left:30px;font-size:18px;font-weight:600"></div>
+      <div class="hint" id="fuelEcho" style="margin-top:7px;font-size:12.5px;color:var(--muted)">= ${fuelGBP()} / litre</div>
+    </div>
+    <button class="btn btn-primary btn-block" id="saveFuel">Save fuel price</button>`;
+  wrap.appendChild(card);
+
+  const note = el('div','note');
+  note.innerHTML = `<span class="ni">⛽</span><span>The cost of unleaded is determined by the AA UK average and will be reviewed every 4 weeks. Changing it here applies to all future trips only — trips already logged keep their original cost.</span>`;
+  wrap.appendChild(note);
+
+  const inp = card.querySelector('#setFuel');
+  inp.addEventListener('input', ()=>{ const v=Number(inp.value)||0; card.querySelector('#fuelEcho').textContent = '= £'+(v/100).toFixed(2)+' / litre'; });
+  card.querySelector('#saveFuel').onclick = async ()=>{
+    const p = Number(inp.value)||0;
+    if(!(p>0)) return toast('Enter a price','err');
+    const btn = card.querySelector('#saveFuel'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+    try{
+      if(connected){ applyData(await api('setFuelPrice',{fuelPence:p})); }
+      else { state.settings.fuelPence = p; }
+      toast('Fuel price updated'); renderAll();
+    }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save fuel price'; }
+  };
+
+  // ---- Notifications ----
+  const neb = el('div','section-eyebrow','Notifications'); neb.style.marginTop='24px';
+  wrap.appendChild(neb);
+  wrap.appendChild(el('div','page-sub','Get a push when something changes your balance. Install the free ntfy app, then subscribe to your own topic below.'));
+
+  const ncard = el('div','card'); ncard.style.padding='16px';
+  ncard.innerHTML = `
+    <div class="field" style="margin-bottom:10px"><label>Topic prefix <span class="hint">keep it unguessable — it acts like a password</span></label>
+      <input class="input" id="ntfyBase" autocomplete="off" placeholder="e.g. kunky-econ-7f3a9c2e" value="${esc((state.settings&&state.settings.ntfyBase)||'')}"></div>
+    <div class="field" style="margin-bottom:10px"><label>Access token <span class="hint">${(state.settings&&state.settings.ntfyTokenSet)?'✓ saved — leave blank to keep':'tk_… from your free ntfy.sh account'}</span></label>
+      <input class="input" id="ntfyToken" type="password" autocomplete="off" placeholder="${(state.settings&&state.settings.ntfyTokenSet)?'•••••••• (saved)':'tk_xxxxxxxxxxxx'}"></div>
+    <button class="btn btn-primary btn-block" id="saveNtfy">Save & turn on</button>`;
+  wrap.appendChild(ncard);
+
+  const enabled = !!(state.settings && state.settings.ntfyBase);
+  if(enabled){
+    wrap.appendChild(el('div','section-eyebrow','Each person’s topic'));
+    const list = el('div','card'); list.style.padding='4px 16px';
+    state.people.forEach(p=>{
+      const topic = personTopic(p.name);
+      const r = el('div','veh-row');
+      r.innerHTML = `${avatar(p.name,'md')}<div style="flex:1;min-width:0">
+          <div class="vn">${esc(p.name)}</div>
+          <div class="vm" style="word-break:break-all">${esc(topic)}</div></div>
+        <button class="btn btn-ghost btn-sm ncopy">Copy</button>`;
+      r.querySelector('.ncopy').onclick = async ()=>{
+        try{ await navigator.clipboard.writeText(topic); toast('Topic copied'); }
+        catch(e){ toast(topic,'ok'); }
+      };
+      list.appendChild(r);
+    });
+    wrap.appendChild(list);
+
+    const openMine = el('a','btn btn-ghost btn-block','🔔 Open my topic to subscribe');
+    openMine.href = `${ntfyServerBase()}/${personTopic(state.me)}`; openMine.target='_blank'; openMine.style.marginTop='12px';
+    wrap.appendChild(openMine);
+    const testBtn = el('button','btn btn-ghost btn-block','Send myself a test'); testBtn.style.marginTop='10px';
+    testBtn.onclick = async ()=>{
+      if(!connected) return toast('Connect to Supabase first','err');
+      testBtn.disabled=true; testBtn.innerHTML='<span class="spin"></span>';
+      try{ await api('testNtfy',{name:state.me}); toast('Test sent — check your phone'); }
+      catch(e){ toast(e.message,'err'); }
+      finally{ testBtn.disabled=false; testBtn.textContent='Send myself a test'; }
+    };
+    wrap.appendChild(testBtn);
+  }
+
+  const nnote = el('div','note');
+  nnote.innerHTML = `<span class="ni">🔔</span><span>ntfy's free tier limits anonymous senders by IP, and Google's servers share one — so an access token from a free ntfy.sh account is needed to send reliably. Each person then subscribes to just their own topic in the ntfy app. You're notified about expenses you're in, payments to you, and trips you're on. Topics are public, so if the prefix leaks, change it here and everyone re-subscribes.</span>`;
+  wrap.appendChild(nnote);
+
+  ncard.querySelector('#saveNtfy').onclick = async ()=>{
+    const base = ntfySlug(ncard.querySelector('#ntfyBase').value);
+    const token = ncard.querySelector('#ntfyToken').value.trim();
+    const payload = { base };
+    if(token) payload.token = token;
+    const btn = ncard.querySelector('#saveNtfy'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+    try{
+      if(connected){ applyData(await api('setNtfy',payload)); }
+      else { state.settings.ntfyBase = base; if(token) state.settings.ntfyTokenSet=true; }
+      toast(base?'Notifications on':'Notifications off'); renderAll();
+    }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save & turn on'; }
+  };
+
+  // ---- AI receipt scanning ----
+  const aieb = el('div','section-eyebrow','AI receipt scanning'); aieb.style.marginTop='24px';
+  wrap.appendChild(aieb);
+  wrap.appendChild(el('div','page-sub','Powers the Scan tab. Paste an Anthropic API key so the app can read receipt photos.'));
+  const aicard = el('div','card'); aicard.style.padding='16px';
+  aicard.innerHTML = `
+    <div class="field" style="margin-bottom:10px"><label>Anthropic API key <span class="hint">${(state.settings&&state.settings.aiKeySet)?'✓ saved — leave blank to keep':'sk-ant-…'}</span></label>
+      <input class="input" id="aiKeyIn" type="password" autocomplete="off" placeholder="${(state.settings&&state.settings.aiKeySet)?'•••••••• (saved)':'sk-ant-...'}"></div>
+    <button class="btn btn-primary btn-block" id="saveAiKey">Save key</button>`;
+  wrap.appendChild(aicard);
+  const ainote = el('div','note');
+  ainote.innerHTML = `<span class="ni">🔑</span><span>The key is stored in your database and used from the browser, so treat the app link as sensitive. Set a low monthly spend limit in the Anthropic console to be safe. Scans cost a fraction of a penny each.</span>`;
+  wrap.appendChild(ainote);
+  aicard.querySelector('#saveAiKey').onclick = async ()=>{
+    const key = aicard.querySelector('#aiKeyIn').value.trim();
+    if(!key) return toast('Paste a key first','err');
+    const btn = aicard.querySelector('#saveAiKey'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+    try{
+      if(connected){ applyData(await api('setAiKey',{key})); }
+      else { state.settings.aiKey=key; state.settings.aiKeySet=true; }
+      toast('API key saved'); renderAll();
+    }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save key'; }
+  };
+
+  const eb = el('div','section-eyebrow','Saved places'); eb.style.marginTop='24px';
+  wrap.appendChild(eb);
+  wrap.appendChild(el('div','page-sub','Quick-pick destinations when planning a trip.'));
+  const pc = el('div','card'); pc.style.padding='4px 16px';
+  if(!state.places.length){
+    pc.appendChild(emptyState('📍','No places yet','Add the spots you drive to often.'));
+  } else {
+    state.places.forEach(p=>{
+      const r = el('div','veh-row');
+      r.innerHTML = `<div class="act-ic">📍</div><div style="flex:1"><div class="vn">${esc(p.label)}</div>
+        <div class="vm">${esc(p.address)}</div></div>
+        <button class="btn btn-ghost btn-sm pdel">Remove</button>`;
+      r.querySelector('.pdel').onclick = async ()=>{
+        if(connected){ try{ applyData(await api('deletePlace',{label:p.label})); toast('Removed'); }catch(e){ toast(e.message,'err'); } }
+        else { state.places=state.places.filter(x=>x!==p); }
+        renderAll();
+      };
+      pc.appendChild(r);
+    });
+  }
+  wrap.appendChild(pc);
+  const addP = el('button','btn btn-ghost btn-block','+ Add a place'); addP.style.marginTop='12px';
+  addP.onclick = ()=>placeEditorSheet();
+  wrap.appendChild(addP);
+
+  // ---- One-time import from the old Google version ----
+  const ieb = el('div','section-eyebrow','Import old data'); ieb.style.marginTop='24px';
+  wrap.appendChild(ieb);
+  wrap.appendChild(el('div','page-sub','Moving over from the old Google (Apps Script) version? Pull everything across once. Keep the old deployment running until this succeeds.'));
+  const icard = el('div','card'); icard.style.padding='16px';
+  icard.innerHTML = `
+    <div class="field" style="margin-bottom:10px"><label>Old Apps Script URL <span class="hint">ends in /exec</span></label>
+      <input class="input" id="impUrl" autocomplete="off" placeholder="https://script.google.com/macros/s/.../exec"></div>
+    <div class="field" style="margin-bottom:12px"><label>Old access key</label>
+      <input class="input" id="impSecret" autocomplete="off" value="split-7f3a9c2e8b1d4056"></div>
+    <button class="btn btn-primary btn-block" id="impRun">Import everything</button>`;
+  wrap.appendChild(icard);
+  const inote = el('div','note');
+  inote.innerHTML = `<span class="ni">📦</span><span>Brings across people, all expenses, payments and trips, vehicles, quick items, places and the fuel price. Safe to run more than once — it updates existing rows rather than duplicating. Old receipt links keep working.</span>`;
+  wrap.appendChild(inote);
+  icard.querySelector('#impRun').onclick = async ()=>{
+    if(!connected) return toast('Connect to Supabase first','err');
+    const oldUrl = icard.querySelector('#impUrl').value.trim();
+    const secret = icard.querySelector('#impSecret').value.trim();
+    if(!oldUrl) return toast('Paste the old Apps Script URL','err');
+    const btn = icard.querySelector('#impRun'); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Importing…';
+    try{
+      const counts = await migrateFromApps(oldUrl, secret);
+      toast(`Imported ${counts.people} people, ${counts.expenses} entries`);
+      await refresh();
+    }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Import everything'; }
+  };
+
+  return wrap;
+}
+
+function placeEditorSheet(){
+  openSheet(s=>{
+    s.appendChild(el('h2',null,'Add a place'));
+    s.appendChild(el('p','desc','Give it a friendly name and the address used for directions.'));
+    s.innerHTML += `
+      <div class="field"><label>Name</label><input class="input" id="plLabel" placeholder="e.g. Kunky House"></div>
+      <div class="field"><label>Address</label><input class="input" id="plAddr" placeholder="e.g. Dangerous Corner, Leigh"></div>`;
+    const btn = el('button','btn btn-primary btn-block','Save place');
+    btn.onclick = async ()=>{
+      const label=s.querySelector('#plLabel').value.trim();
+      const address=s.querySelector('#plAddr').value.trim();
+      if(!label) return toast('Give it a name','err');
+      if(!address) return toast('Enter the address','err');
+      btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+      try{
+        if(connected){ applyData(await api('addPlace',{label,address})); }
+        else { state.places.push({label,address}); }
+        closeSheet(); toast('Place saved'); renderAll();
+      }catch(e){ toast(e.message,'err'); btn.disabled=false; btn.innerHTML='Save place'; }
+    };
+    s.appendChild(btn);
+  });
+}
+function typeIcon(x){ return x.type==='transfer'?'💸':x.type==='trip'?'🚗':x.type==='quick'?'⚡':'🧾'; }
+function viewActivity(){
+  const wrap = el('div');
+  wrap.appendChild(el('div','page-title','Activity'));
+  wrap.appendChild(el('div','page-sub','Every expense and payment, newest first.'));
+
+  const tags = allTags();
+  if(state.tagFilter && !tags.includes(state.tagFilter)) state.tagFilter=null;
+  if(tags.length){
+    const scroller = el('div','chip-scroll');
+    const mk = (label,val)=>{ const c=el('button','fchip'+((state.tagFilter===val)?' on':'')); c.textContent=label; c.onclick=()=>{ state.tagFilter=val; renderAll(); }; return c; };
+    scroller.appendChild(mk('All', null));
+    tags.forEach(t=> scroller.appendChild(mk('# '+t, t)));
+    wrap.appendChild(scroller);
+  }
+
+  const shown = state.tagFilter ? state.expenses.filter(x=>x.tag===state.tagFilter) : state.expenses;
+
+  if(state.tagFilter){
+    const total = shown.reduce((s,x)=> s + (x.type==='transfer'?0:x.total), 0);
+    const mine = shown.reduce((s,x)=> s + ((x.type!=='transfer' && x.split && x.split[state.me])||0), 0);
+    const sum = el('div','overall pos'); sum.style.marginBottom='14px';
+    sum.innerHTML = `<div class="lbl"># ${esc(state.tagFilter)}</div><div class="big num">${money(total)}</div><div class="sub">${shown.length} item${shown.length===1?'':'s'} · your share ${money(mine)}</div>`;
+    wrap.appendChild(sum);
+  }
+
+  const list = el('div','card');
+  if(!shown.length){
+    list.appendChild(emptyState('🧾', state.tagFilter?'Nothing tagged here':'Nothing logged yet', state.tagFilter?'No items carry this tag yet.':'Add your first expense from the Add tab.'));
+  } else {
+    shown.forEach(x=>{
+      const youPaid = x.paidBy===state.me;
+      const isSO = x.type==='transfer' && (x.description||'').indexOf('Standing order')!==-1;
+      const row = el('div','act-row');
+      const ds = fmtDate(x.ts);
+      const tagPill = (x.tag && !state.tagFilter) ? ` <span class="tag-pill">#${esc(x.tag)}</span>` : '';
+      let meta, right;
+      if(x.type==='transfer'){
+        const to = Object.keys(x.split||{})[0]||'';
+        const label = youPaid ? `You paid ${esc(to)}` : (to===state.me ? `${esc(x.paidBy)} paid you` : `${esc(x.paidBy)} paid ${esc(to)}`);
+        meta = `${label} · ${ds}${isSO?' · 🔁 standing order':''}`;
+        right = `<div class="tot num">${money(x.total)}</div><div class="yr">${isSO?'standing order':'payment'}</div>`;
+      } else {
+        const yourShare = (x.split&&x.split[state.me])||0;
+        meta = `${youPaid?'You':esc(x.paidBy)} paid · ${ds}${x.receiptUrl?' · 📎':''}`;
+        right = `<div class="tot num">${money(x.total)}</div><div class="yr">${yourShare?('your share '+money(yourShare)):'not in split'}</div>`;
+      }
+      row.innerHTML = `<div class="act-ic">${isSO?'🔁':typeIcon(x)}</div>
+        <div class="act-main"><div class="at">${esc(x.name)}${tagPill}</div>
+          <div class="am">${meta}</div></div>
+        <div class="act-right">${right}</div>`;
+      row.onclick = ()=>expenseDetailSheet(x);
+      list.appendChild(row);
+    });
+  }
+  wrap.appendChild(list);
+  return wrap;
+}
+function expenseDetailSheet(x){
+  openSheet(s=>{
+    const isT = x.type==='transfer';
+    const date = new Date(x.ts).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'long'});
+    if(isT){
+      const to = Object.keys(x.split||{})[0]||'';
+      const isSO = (x.description||'').indexOf('Standing order')!==-1;
+      s.appendChild(el('h2',null, isSO?'🔁 Standing order':'Payment'));
+      s.appendChild(el('p','desc', isSO ? 'Auto-created · '+date+' · simulated, no real money moved' : date));
+      const box = el('div','card'); box.style.cssText='padding:16px;margin-bottom:4px;display:flex;align-items:center;gap:12px;justify-content:center';
+      box.innerHTML = `${avatar(x.paidBy,'md')}<div style="font-weight:600">${esc(x.paidBy)}</div>
+        <div style="color:var(--brand);font-size:20px">→</div>
+        <div style="font-weight:600">${esc(to)}</div>${avatar(to,'md')}`;
+      s.appendChild(box);
+      const amt = el('div'); amt.style.cssText='text-align:center;margin:14px 0';
+      amt.innerHTML = `<div class="num" style="font-size:32px;font-weight:700">${money(x.total)}</div>`;
+      s.appendChild(amt);
+      if(x.description && !isSO){ const d=el('div','card'); d.style.cssText='padding:13px 15px;margin-bottom:8px;font-size:14px;color:var(--ink-soft)'; d.textContent=x.description; s.appendChild(d); }
+    } else {
+      s.appendChild(el('h2',null,esc(x.name)));
+      s.appendChild(el('p','desc',`${esc(x.paidBy)} paid ${money(x.total)} · ${date}`));
+      if(x.description){ const d=el('div','card'); d.style.cssText='padding:13px 15px;margin-bottom:14px;font-size:14px;color:var(--ink-soft)'; d.textContent=x.description; s.appendChild(d); }
+      s.appendChild(el('div','section-eyebrow','Split'));
+      const box = el('div','card'); box.style.padding='4px 14px';
+      Object.keys(x.split||{}).forEach(nm=>{
+        const r=el('div','split-row');
+        r.innerHTML=`${avatar(nm,'sm')}<span class="name">${esc(nm)}${nm===x.paidBy?' <span style="color:var(--faint);font-weight:400">· paid</span>':''}</span><span class="num" style="font-weight:600">${money(x.split[nm])}</span>`;
+        box.appendChild(r);
+      });
+      s.appendChild(box);
+    }
+    if(x.receiptUrl){
+      const a=el('a','btn btn-ghost btn-block','📎 View receipt'); a.href=x.receiptUrl; a.target='_blank'; a.style.marginTop='12px'; s.appendChild(a);
+    }
+
+    const tagF = el('div','field'); tagF.style.marginTop='14px';
+    tagF.innerHTML = `<label>Tag <span class="hint">group with other items</span></label>
+      <div style="display:flex;gap:8px"><input class="input" id="dTag" list="dTagList" autocomplete="off" placeholder="e.g. Lake District weekend" value="${esc(x.tag||'')}" style="flex:1">
+      <button class="btn btn-primary btn-sm" id="dTagSave">Save</button></div>${tagDatalist('dTagList')}`;
+    s.appendChild(tagF);
+    tagF.querySelector('#dTagSave').onclick = async ()=>{
+      const tag = tagF.querySelector('#dTag').value.trim();
+      const b = tagF.querySelector('#dTagSave'); b.disabled=true; b.innerHTML='<span class="spin"></span>';
+      try{
+        if(connected){ applyData(await api('setExpenseTag',{id:x.id, tag})); }
+        else { const e=state.expenses.find(e=>e.id===x.id); if(e) e.tag=tag; }
+        x.tag=tag; closeSheet(); toast(tag?'Tagged':'Tag removed'); renderAll();
+      }catch(e){ toast(e.message,'err'); b.disabled=false; b.textContent='Save'; }
+    };
+
+    const del = el('button','btn btn-block', isT?'Delete payment':'Delete expense');
+    del.style.cssText='margin-top:12px;color:var(--neg);background:var(--neg-soft)';
+    del.onclick = async ()=>{
+      del.disabled=true; del.innerHTML='<span class="spin"></span>';
+      try{
+        if(connected){ applyData(await api('deleteExpense',{id:x.id})); }
+        else { state.expenses=state.expenses.filter(e=>e.id!==x.id); }
+        closeSheet(); toast('Deleted'); renderAll();
+      }catch(e){ toast(e.message,'err'); del.disabled=false; del.innerHTML=isT?'Delete payment':'Delete expense'; }
+    };
+    s.appendChild(del);
+  });
+}
+
+/* ---------------- File processing ---------------- */
+function processFile(file){
+  return new Promise((resolve,reject)=>{
+    if(file.type.startsWith('image/')){
+      const img=new Image(), reader=new FileReader();
+      reader.onload=()=>{ img.onload=()=>{
+        const max=1400; let {width:w,height:h}=img;
+        if(w>max||h>max){ const sc=max/Math.max(w,h); w=Math.round(w*sc); h=Math.round(h*sc); }
+        const c=document.createElement('canvas'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        const dataUrl=c.toDataURL('image/jpeg',0.82);
+        const b64=dataUrl.split(',')[1];
+        resolve({data:b64, name:file.name.replace(/\.[^.]+$/,'')+'.jpg', mimeType:'image/jpeg', size:Math.round(b64.length*0.75), preview:dataUrl});
+      }; img.onerror=reject; img.src=reader.result; };
+      reader.onerror=reject; reader.readAsDataURL(file);
+    } else {
+      const reader=new FileReader();
+      reader.onload=()=>{ const b64=reader.result.split(',')[1];
+        resolve({data:b64, name:file.name, mimeType:file.type||'application/octet-stream', size:file.size, preview:null}); };
+      reader.onerror=reject; reader.readAsDataURL(file);
+    }
+  });
+}
+
+/* ---------------- Misc ---------------- */
+function emptyState(ic,t,sub){
+  const e=el('div','empty');
+  e.innerHTML=`<div class="e-ic">${ic}</div><div class="e-t">${esc(t)}</div><div class="e-s">${esc(sub)}</div>`;
+  return e;
+}
+
+/* ---------------- Boot ---------------- */
+renderLogin();
+initSupabase();
+if(connected){ refresh(); }
+</script>
 </body>
 </html>
